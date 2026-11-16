@@ -181,39 +181,27 @@ export function CajeroAtmView() {
       <main className="max-w-4xl mx-auto px-4 py-8">
         {!autenticado ? (
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-            {/* INSTRUCCIONES Y CUENTAS DEMO */}
+            {/* GUÍA DE USO DEL DISPENSADOR */}
             <div className="md:col-span-5 rounded-2xl bg-white border border-rose-200 p-5 shadow-sm space-y-3">
               <h2 className="text-sm font-bold text-rose-600 uppercase tracking-wider">
-                Tarjetas Rápidas de Prueba
+                Instrucciones de Retiro Seguro
               </h2>
               <p className="text-xs text-slate-500">
-                Haz clic en un integrante para insertar su cuenta y su PIN `1234` automáticamente:
+                Puedes retirar efectivo con tu tarjeta débito o mediante Pin temporal de 6 dígitos generado en la Sucursal Virtual:
               </p>
-              <div className="space-y-2">
-                {[
-                  { nombre: "Valentina Leal", cuenta: "700111223344", pin: "1234" },
-                  { nombre: "Sergio Ramos", cuenta: "700222334455", pin: "1234" },
-                  { nombre: "Dana Manrique", cuenta: "700333445566", pin: "1234" },
-                ].map((u) => (
-                  <button
-                    key={u.cuenta}
-                    type="button"
-                    onClick={() => {
-                      setCuentaNumero(u.cuenta);
-                      setPin(u.pin);
-                      toast.info(`Tarjeta de ${u.nombre} insertada`);
-                    }}
-                    className="w-full rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 p-3 text-left flex items-center justify-between transition-all"
-                  >
-                    <div>
-                      <span className="block text-xs font-bold text-slate-900">{u.nombre}</span>
-                      <span className="block text-[11px] font-mono text-rose-700">{u.cuenta}</span>
-                    </div>
-                    <span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 border border-rose-200">
-                      PIN: {u.pin}
-                    </span>
-                  </button>
-                ))}
+              <div className="space-y-2 text-xs text-slate-700">
+                <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3">
+                  <strong className="block text-slate-900">1. Identificación de Cuenta</strong>
+                  <span className="text-slate-500">Ingresa tu número de cuenta bancaria o documento de identidad.</span>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3">
+                  <strong className="block text-slate-900">2. Validación de Seguridad</strong>
+                  <span className="text-slate-500">Digita tu PIN de 4 dígitos o tu Pin OTP de 6 dígitos en el teclado numérico.</span>
+                </div>
+                <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-3">
+                  <strong className="block text-slate-900">3. Dispensación y Tirilla</strong>
+                  <span className="text-slate-500">Selecciona el monto en múltiplos de $10.000 COP y conserva tu comprobante.</span>
+                </div>
               </div>
             </div>
 

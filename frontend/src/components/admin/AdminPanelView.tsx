@@ -43,9 +43,9 @@ export function AdminPanelView() {
     apellidos: "",
     correo: "",
     telefono: "",
-    saldo_inicial: "500000",
-    password: "Banco123*",
-    pin_cajero: "1234",
+    saldo_inicial: "",
+    password: "",
+    pin_cajero: "",
   });
 
   useEffect(() => {
@@ -153,9 +153,9 @@ export function AdminPanelView() {
         apellidos: "",
         correo: "",
         telefono: "",
-        saldo_inicial: "500000",
-        password: "Banco123*",
-        pin_cajero: "1234",
+        saldo_inicial: "",
+        password: "",
+        pin_cajero: "",
       });
       checkAdminSession();
       setActiveTab("clientes");
@@ -360,23 +360,6 @@ export function AdminPanelView() {
         {activeTab === "consignar" && (
           <div className="max-w-xl mx-auto rounded-2xl bg-white border border-slate-200 p-6 shadow-sm space-y-4">
             <h2 className="text-lg font-bold text-slate-900">Caja de Consignaciones en Efectivo</h2>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { nombre: "Valentina Leal", cuenta: "700111223344" },
-                { nombre: "Sergio Ramos", cuenta: "700222334455" },
-                { nombre: "Dana Manrique", cuenta: "700333445566" },
-              ].map((u) => (
-                <button
-                  key={u.cuenta}
-                  type="button"
-                  onClick={() => setCuentaConsignar(u.cuenta)}
-                  className="rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-left"
-                >
-                  <span className="block text-xs font-bold text-slate-900">{u.nombre}</span>
-                  <span className="block text-[10px] font-mono text-rose-700">{u.cuenta}</span>
-                </button>
-              ))}
-            </div>
             <form onSubmit={handleConsignarSubmit} className="space-y-4">
               <div>
                 <Label className="text-xs font-semibold text-slate-700">Cuenta Destino</Label>

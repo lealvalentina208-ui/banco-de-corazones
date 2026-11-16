@@ -24,15 +24,6 @@ Proyecto académico de simulación bancaria integral desarrollado por:
    - Activación y bloqueo preventivo de cuentas.
    - Bitácora contable de operaciones.
 
-## Credenciales de Prueba
+## Seguridad de Credenciales
 
-### Dirección General (`/admin`)
-- **Correo:** `admin@banco.com`
-- **Contraseña:** `Banco123*`
-
-### Asociados de Prueba (`/`)
-| Asociado | Documento (Usuario) | Cuenta | Contraseña | PIN Cajero |
-| :--- | :--- | :--- | :--- | :--- |
-| **Valentina Leal** | `1001112233` | `700111223344` | `Banco123*` | `1234` |
-| **Sergio Ramos** | `1002223344` | `700222334455` | `Banco123*` | `1234` |
-| **Dana Manrique** | `1003334455` | `700333445566` | `Banco123*` | `1234` |
+Todas las contraseñas de usuarios y los pines de cajero se almacenan cifrados en la base de datos mediante **bcrypt** (`saltRounds = 10`), garantizando que ninguna clave permanezca en texto plano.

@@ -45,12 +45,6 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
     onLogin(identificador.trim(), password);
   };
 
-  const cargarAsociadoDemo = (doc: string, nombre: string) => {
-    setIdentificador(doc);
-    setPassword("Banco123*");
-    toast.info(`Credenciales cargadas: ${nombre}`);
-  };
-
   const handleRegistroSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regData.numero_documento.trim() || !regData.nombres.trim() || !regData.apellidos.trim() || !regData.correo.trim()) {
@@ -157,45 +151,25 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
             Bienvenido a la sucursal virtual de <strong>Banco de Corazones</strong>. Consulta tu saldo en línea, envía dinero sin filas y genera pines de retiro para nuestra red de cajeros.
           </p>
 
-          {/* TARJETA DE INTEGRANTES Y ACCESO RÁPIDO */}
-          <div className="rounded-2xl bg-white border border-rose-200 p-5 shadow-sm max-w-xl">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-600 mb-3">
+          {/* TARJETA DE BENEFICIOS E INTEGRANTES (SIN CREDENCIALES EN TEXTO PLANO) */}
+          <div className="rounded-2xl bg-white border border-rose-200 p-5 shadow-sm max-w-xl space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-600">
               <Users className="h-4 w-4" />
-              <span>Equipo del Proyecto — Cuentas de Prueba Rápida</span>
+              <span>Desarrollado por el Equipo</span>
             </div>
-            <p className="text-xs text-slate-500 mb-3">
-              Haz clic sobre cualquiera de los integrantes para cargar su documento y contraseña automáticamente:
-            </p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <button
-                type="button"
-                onClick={() => cargarAsociadoDemo("1001112233", "Valentina Leal")}
-                className="rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/80 p-3 text-left transition-all"
-              >
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
                 <span className="block text-xs font-bold text-slate-900">Valentina Leal</span>
-                <span className="block text-[11px] font-mono text-rose-700 mt-0.5">CC: 1001112233</span>
-                <span className="block text-[10px] text-slate-500 mt-0.5">Cta: 700111223344</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => cargarAsociadoDemo("1002223344", "Sergio Ramos")}
-                className="rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/80 p-3 text-left transition-all"
-              >
+                <span className="block text-[11px] text-rose-600 mt-0.5">Arquitectura & Gestión</span>
+              </div>
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
                 <span className="block text-xs font-bold text-slate-900">Sergio Ramos</span>
-                <span className="block text-[11px] font-mono text-rose-700 mt-0.5">CC: 1002223344</span>
-                <span className="block text-[10px] text-slate-500 mt-0.5">Cta: 700222334455</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => cargarAsociadoDemo("1003334455", "Dana Manrique")}
-                className="rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100/80 p-3 text-left transition-all"
-              >
+                <span className="block text-[11px] text-rose-600 mt-0.5">Motor Transaccional</span>
+              </div>
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
                 <span className="block text-xs font-bold text-slate-900">Dana Manrique</span>
-                <span className="block text-[11px] font-mono text-rose-700 mt-0.5">CC: 1003334455</span>
-                <span className="block text-[10px] text-slate-500 mt-0.5">Cta: 700333445566</span>
-              </button>
+                <span className="block text-[11px] text-rose-600 mt-0.5">Experiencia & Seguridad</span>
+              </div>
             </div>
           </div>
         </div>

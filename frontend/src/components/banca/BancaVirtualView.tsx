@@ -218,12 +218,6 @@ export function BancaVirtualView() {
     );
   });
 
-  const contactosEquipo = [
-    { nombre: "Valentina Leal", cuenta: "700111223344" },
-    { nombre: "Sergio Ramos", cuenta: "700222334455" },
-    { nombre: "Dana Manrique", cuenta: "700333445566" },
-  ].filter((c) => c.cuenta !== cuentaActiva?.numero_cuenta);
-
   return (
     <div className="min-h-screen bg-[#f8f4f6] text-slate-800">
       {/* CABECERA SUPERIOR ROJA CARMESÍ (SIN SIDEBAR LATERAL) */}
@@ -466,26 +460,6 @@ export function BancaVirtualView() {
               <p className="text-xs text-slate-500 mt-0.5">
                 Disponible en tu cuenta: <strong className="text-rose-600">{fmt(saldoActual)}</strong>
               </p>
-            </div>
-
-            {/* CONTACTOS RÁPIDOS DEL EQUIPO */}
-            <div>
-              <span className="text-xs font-semibold text-slate-600 block mb-2">
-                Seleccionar destinatario frecuente del equipo:
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {contactosEquipo.map((c) => (
-                  <button
-                    key={c.cuenta}
-                    type="button"
-                    onClick={() => setCuentaDestino(c.cuenta)}
-                    className="rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 p-3 text-left transition-all"
-                  >
-                    <span className="block text-xs font-bold text-slate-900">{c.nombre}</span>
-                    <span className="block text-[11px] font-mono text-rose-700">Cuenta: {c.cuenta}</span>
-                  </button>
-                ))}
-              </div>
             </div>
 
             {reciboTransferencia && (

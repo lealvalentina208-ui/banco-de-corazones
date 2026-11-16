@@ -12,7 +12,7 @@ interface AdminLoginProps {
 }
 
 export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
-  const [adminCorreo, setAdminCorreo] = useState("admin@banco.com");
+  const [adminCorreo, setAdminCorreo] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -118,20 +118,6 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
             {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <KeyRound className="h-4 w-4 mr-2" />}
             Entrar al Panel de Administración
           </Button>
-
-          <div className="pt-2 text-center">
-            <button
-              type="button"
-              onClick={() => {
-                setAdminCorreo("admin@banco.com");
-                setAdminPassword("Banco123*");
-                toast.info("Datos de administrador cargados");
-              }}
-              className="text-xs text-rose-600 font-semibold hover:underline"
-            >
-              Cargar credenciales de Gerencia (Valentina Leal)
-            </button>
-          </div>
         </form>
       </div>
     </div>

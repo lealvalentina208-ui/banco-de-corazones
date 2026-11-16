@@ -188,7 +188,7 @@ INSERT INTO canales (id, nombre) VALUES
 (2, 'Sucursal Web Personas'),
 (3, 'Caja Principal');
 
--- Usuarios de Banco de Corazones (Clave: Banco123* | PIN: 1234)
+-- Usuarios de Banco de Corazones (Credenciales cifradas con bcrypt)
 INSERT INTO usuarios (id, tipo_documento_id, numero_documento, nombres, apellidos, correo, telefono, ciudad, nivel_asociado, password_hash, rol_id, estado_id) VALUES
 (1, 1, '1053900100', 'Valentina', 'Leal (Gerencia)', 'admin@banco.com', '3101112233', 'Manizales', 'Directiva', '$2b$10$yhjLcIIlWUg6Kd7kz2e53uhQhmPvwaY4B.jh6T/wC5as4VucS9ttq', 1, 1),
 (2, 1, '1001112233', 'Valentina', 'Leal', 'valentina@corazones.com', '3112223344', 'Manizales', 'Fundadora', '$2b$10$yhjLcIIlWUg6Kd7kz2e53uhQhmPvwaY4B.jh6T/wC5as4VucS9ttq', 2, 1),
