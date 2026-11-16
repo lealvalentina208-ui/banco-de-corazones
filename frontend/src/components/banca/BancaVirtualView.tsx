@@ -1,21 +1,15 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { BancaTab, Cuenta, Movimiento, Usuario } from "./types";
-import { BancaSidebar } from "./BancaSidebar";
-import { BancaHeader } from "./BancaHeader";
+import { Cuenta, Movimiento, Usuario } from "./types";
 import { BancaLogin } from "./BancaLogin";
-import { InicioView } from "./views/InicioView";
-import { CuentasView } from "./views/CuentasView";
-import { TransferenciasView } from "./views/TransferenciasView";
-import { TarjetasView } from "./views/TarjetasView";
-import { AhorrosView } from "./views/AhorrosView";
-import { PrestamosView } from "./views/PrestamosView";
-import { AjustesView } from "./views/AjustesView";
 import {
-  LayoutDashboard, Wallet, ArrowLeftRight, CreditCard,
-  PiggyBank, Landmark, Settings, MoreHorizontal, LogOut, X,
-  Menu, ChevronRight, ShieldCheck, DollarSign, FileText, Copy, Check
+  Heart, Wallet, ArrowLeftRight, CreditCard, KeyRound,
+  LogOut, Copy, Check, RefreshCw, ShieldCheck, ArrowUpRight,
+  ArrowDownLeft, Search, CheckCircle2, User
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
@@ -27,16 +21,21 @@ export function BancaVirtualView() {
   const [cuentaActiva, setCuentaActiva] = useState<Cuenta | null>(null);
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<BancaTab>("inicio");
+  const [activeTab, setActiveTab] = useState<"resumen" | "transferir" | "pin" | "extracto">("resumen");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [showMobileMore, setShowMobileMore] = useState(false);
-  const [showModalSacarPlata, setShowModalSacarPlata] = useState(false);
+
+  // Estado de Transferencia
+  const [cuentaDestino, setCuentaDestino] = useState("");
+  const [montoTransferir, setMontoTransferir] = useState("");
+  const [conceptoTransferir, setConceptoTransferir] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [reciboTransferencia, setReciboTransferencia] = useState<any>(null);
+
+  // Estado de Pin de Retiro
   const [codigoRetiro, setCodigoRetiro] = useState<string | null>(null);
   const [loadingCodigo, setLoadingCodigo] = useState(false);
-  const [copiadoCodigo, setCopiadoCodigo] = useState(false);
-  const [copiadoCuenta, setCopiadoCuenta] = useState(false);
+  const [copiado, setCopiado] = useState(false);
 
-  // Cargar datos de resumen desde MySQL
   const cargarResumen = async () => {
     try {
       setLoading(true);
@@ -51,16 +50,13 @@ export function BancaVirtualView() {
         setUsuario(data.usuario);
         setCuentas(data.cuentas || []);
         if (data.cuentas && data.cuentas.length > 0) {
-          const cuentaActual = cuentaActiva
-            ? data.cuentas.find((c: Cuenta) => c.id === cuentaActiva.id) || data.cuentas[0]
-            : data.cuentas[0];
+          const cuentaActual = data.cuentas[0];
           setCuentaActiva(cuentaActual);
           cargarMovimientos(cuentaActual.id);
         }
       }
     } catch (err) {
-      console.error("Error al cargar resumen:", err);
-      toast.error("Error de conexión con el backend.");
+      toast.error("Error de conexión con el servidor.");
     } finally {
       setLoading(false);
     }
@@ -74,7 +70,7 @@ export function BancaVirtualView() {
         setMovimientos(data.movimientos || []);
       }
     } catch (err) {
-      console.error("Error al cargar movimientos:", err);
+      console.error(err);
     }
   };
 
@@ -96,10 +92,10 @@ export function BancaVirtualView() {
         toast.error(data.error || "Credenciales incorrectas.");
         return;
       }
-      toast.success(`Bienvenido(a), ${data.usuario.nombres}`);
+      toast.success(`Hola de nuevo, ${data.usuario.nombres}`);
       cargarResumen();
     } catch (err) {
-      toast.error("Error de conexión al iniciar sesión.");
+      toast.error("Error al iniciar sesión.");
     } finally {
       setLoginLoading(false);
     }
@@ -112,120 +108,74 @@ export function BancaVirtualView() {
       setCuentas([]);
       setCuentaActiva(null);
       setMovimientos([]);
-      setActiveTab("inicio");
-      setShowMobileMore(false);
-      toast.info("Sesión cerrada correctamente.");
+      setActiveTab("resumen");
+      toast.info("Has salido de tu sucursal virtual.");
     } catch (err) {
       console.error(err);
     }
   };
 
-  const handleUpdateTelefono = async (nuevoTel: string): Promise<boolean> => {
+  const handleTransferir = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const valorNum = parseFloat(montoTransferir);
+    if (!cuentaDestino.trim() || isNaN(valorNum) || valorNum <= 0) {
+      toast.error("Verifica la cuenta destino y el monto a enviar.");
+      return;
+    }
+
     try {
-      const res = await fetch("/api/banca/perfil", {
+      setEnviando(true);
+      const res = await fetch("/api/banca/transferir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ telefono: nuevoTel }),
+        body: JSON.stringify({
+          cuenta_origen_id: cuentaActiva?.id,
+          numero_cuenta_destino: cuentaDestino.trim(),
+          valor: valorNum,
+          descripcion: conceptoTransferir.trim() || "Envío Banco de Corazones",
+        }),
         credentials: "include",
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || "Error al actualizar perfil.");
-        return false;
+        toast.error(data.error || "No se pudo realizar la transferencia.");
+        return;
       }
-      if (usuario) setUsuario({ ...usuario, telefono: nuevoTel });
-      return true;
-    } catch (err) {
-      toast.error("Error de comunicación.");
-      return false;
-    }
-  };
-
-  const handleCambiarPassword = async (passAct: string, passNew: string): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/banca/password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password_actual: passAct, password_nuevo: passNew }),
-        credentials: "include",
+      toast.success("¡Transferencia enviada con éxito!");
+      setReciboTransferencia(data.comprobante || {
+        destino: cuentaDestino,
+        valor: valorNum,
+        impuesto: Math.round(valorNum * 0.004),
+        fecha: new Date().toLocaleString("es-CO"),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Error al actualizar contraseña.");
-        return false;
-      }
-      return true;
+      setMontoTransferir("");
+      setConceptoTransferir("");
+      cargarResumen();
     } catch (err) {
-      toast.error("Error de comunicación.");
-      return false;
+      toast.error("Error de red al transferir.");
+    } finally {
+      setEnviando(false);
     }
   };
 
-  const saldoReal = cuentaActiva ? cuentaActiva.saldo : 1000000;
-
-  const movimientosFiltrados = movimientos.filter((m) => {
-    if (!searchTerm.trim()) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      m.descripcion?.toLowerCase().includes(term) ||
-      m.tipo_operacion?.toLowerCase().includes(term) ||
-      m.valor?.toString().includes(term)
-    );
-  });
-
-  // 1. ESTADO DE CARGA: PANTALLA OSCURA CON SPINNER (EVITA DESTELLOS DEL DASHBOARD INTERNO)
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#14050a] flex flex-col items-center justify-center text-slate-400">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent shadow-lg shadow-primary/20" />
-        <span className="mt-4 text-xs font-mono tracking-wider text-slate-500">Verificando sesión bancaria...</span>
-      </div>
-    );
-  }
-
-  // 2. SI NO HAY USUARIO AUTENTICADO: LOGIN LIMPIO Y AISLADO
-  if (!usuario) {
-    return <BancaLogin onLogin={handleLogin} loading={loginLoading} />;
-  }
-
-  // NAVEGACIÓN MÓVIL EXACTA A LA IMAGEN 3
-  const mobileNavItems: { id: BancaTab; label: string; icon: any }[] = [
-    { id: "inicio", label: "Inicio", icon: LayoutDashboard },
-    { id: "cuentas", label: "Cuentas", icon: Wallet },
-    { id: "transferencias", label: "Transferir", icon: ArrowLeftRight },
-    { id: "tarjetas", label: "Tarjetas", icon: CreditCard },
-  ];
-
-  const selectTab = (tab: BancaTab) => {
-    setActiveTab(tab);
-    setShowMobileMore(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleGenerarCodigoRetiro = async () => {
+  const handleGenerarPin = async () => {
     try {
       setLoadingCodigo(true);
-      setShowModalSacarPlata(true);
       const res = await fetch("/api/banca/generar-codigo-retiro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           cuenta_id: cuentaActiva?.id,
-          numero_cuenta: cuentaActiva?.numero_cuenta
+          numero_cuenta: cuentaActiva?.numero_cuenta,
         }),
         credentials: "include",
       });
       const data = await res.json();
       if (res.ok && data.codigo) {
         setCodigoRetiro(data.codigo);
+        toast.success("Pin de retiro generado por 30 minutos.");
       } else {
-        if (res.status === 401) {
-          setShowModalSacarPlata(false);
-          toast.error("Sesión expirada. Por favor inicie sesión nuevamente.");
-          setAutenticado(false);
-        } else {
-          toast.error(data.error || "No se pudo generar el código de retiro.");
-        }
+        toast.error(data.error || "No se pudo generar el pin.");
       }
     } catch (err) {
       toast.error("Error al conectar con el servidor.");
@@ -234,481 +184,502 @@ export function BancaVirtualView() {
     }
   };
 
-  // Función universal para copiar al portapapeles (compatible con HTTP local y móviles)
-  const copiarTexto = async (texto: string, tipo: "codigo" | "cuenta") => {
-    if (!texto) return;
-    let copiado = false;
-
-    // 1. Intentar API moderna de Clipboard
-    if (typeof navigator !== "undefined" && navigator.clipboard && window.isSecureContext) {
-      try {
-        await navigator.clipboard.writeText(texto);
-        copiado = true;
-      } catch (e) {
-        // Fallback abajo
-      }
-    }
-
-    // 2. Fallback para HTTP en red local (Android / iOS / PC)
-    if (!copiado && typeof document !== "undefined") {
-      try {
-        const textArea = document.createElement("textarea");
-        textArea.value = texto;
-        textArea.style.position = "fixed";
-        textArea.style.left = "-9999px";
-        textArea.style.top = "-9999px";
-        textArea.setAttribute("readonly", "");
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        copiado = document.execCommand("copy");
-        document.body.removeChild(textArea);
-      } catch (err) {
-        console.error("Error en fallback de copiado:", err);
-      }
-    }
-
-    if (tipo === "codigo") {
-      setCopiadoCodigo(true);
-      setTimeout(() => setCopiadoCodigo(false), 3000);
-      toast.success("¡Código copiado al portapapeles!", {
-        description: `Código: ${texto}`,
-      });
-    } else {
-      setCopiadoCuenta(true);
-      setTimeout(() => setCopiadoCuenta(false), 3000);
-      toast.success("¡Número de cuenta copiado!", {
-        description: `Cuenta: ${texto}`,
-      });
-    }
+  const copiarTexto = (txt: string) => {
+    navigator.clipboard?.writeText(txt);
+    setCopiado(true);
+    toast.success(`Copiado: ${txt}`);
+    setTimeout(() => setCopiado(false), 2000);
   };
 
-  return (
-    <div className="min-h-screen bg-[#14050a] font-sans text-slate-100 w-full max-w-full overflow-x-hidden">
-      {/* SIDEBAR DESKTOP PERMANENTE */}
-      <BancaSidebar
-        activeTab={activeTab}
-        onSelectTab={selectTab}
-        onLogout={handleLogout}
-      />
-
-      {/* ÁREA CENTRAL CON PADDING IZQUIERDO EN DESKTOP */}
-      <div className="lg:pl-64 flex flex-col min-h-screen w-full max-w-full overflow-x-hidden">
-        {/* HEADER LIMPIO */}
-        <BancaHeader
-          usuario={usuario}
-          onRefresh={cargarResumen}
-          onLogout={handleLogout}
-          onToggleMenu={() => setShowMobileMore((prev) => !prev)}
-        />
-
-        {/* CONTENIDO SEGÚN LA PESTAÑA ACTIVA */}
-        <main className="mx-auto w-full max-w-6xl px-3 sm:px-6 lg:px-8 pb-8 sm:pb-12 pt-3.5 sm:pt-6 flex-1">
-          {activeTab === "inicio" && (
-            <InicioView
-              usuario={usuario}
-              cuentas={cuentas}
-              cuentaActiva={cuentaActiva}
-              saldoReal={saldoReal}
-              movimientosFiltrados={movimientosFiltrados}
-              searchTerm={searchTerm}
-              onSearchChange={setSearchTerm}
-              onOpenTransferir={() => selectTab("transferencias")}
-              onOpenCuentas={() => selectTab("cuentas")}
-              onOpenAjustes={() => selectTab("ajustes")}
-              onOpenTarjetas={() => selectTab("tarjetas")}
-              onOpenSacarPlata={handleGenerarCodigoRetiro}
-              onRefreshMovimientos={() => cuentaActiva && cargarMovimientos(cuentaActiva.id)}
-              onSelectCuenta={(c) => {
-                setCuentaActiva(c);
-                cargarMovimientos(c.id);
-              }}
-            />
-          )}
-
-          {activeTab === "cuentas" && (
-            <CuentasView
-              usuario={usuario}
-              cuentas={cuentas}
-              cuentaActiva={cuentaActiva}
-              movimientos={movimientos}
-              onSelectCuenta={(c) => {
-                setCuentaActiva(c);
-                cargarMovimientos(c.id);
-              }}
-              onOpenTransferir={() => selectTab("transferencias")}
-            />
-          )}
-
-          {activeTab === "transferencias" && (
-            <TransferenciasView
-              cuentaActiva={cuentaActiva}
-              saldoReal={saldoReal}
-              movimientos={movimientos}
-              onTransferSuccess={cargarResumen}
-            />
-          )}
-
-          {activeTab === "tarjetas" && (
-            <TarjetasView
-              usuario={usuario}
-              cuentaActiva={cuentaActiva}
-              onRefreshResumen={cargarResumen}
-            />
-          )}
-
-          {activeTab === "ahorros" && <AhorrosView />}
-
-          {activeTab === "prestamos" && <PrestamosView />}
-
-          {activeTab === "ajustes" && (
-            <AjustesView
-              usuario={usuario}
-              onUpdateTelefono={handleUpdateTelefono}
-              onCambiarPassword={handleCambiarPassword}
-            />
-          )}
-        </main>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-rose-50/50 flex flex-col items-center justify-center text-slate-600">
+        <div className="h-10 w-10 animate-spin rounded-full border-3 border-rose-600 border-t-transparent" />
+        <span className="mt-3 text-xs font-semibold text-rose-700">Cargando Banco de Corazones...</span>
       </div>
+    );
+  }
 
-      {/* ======================================================== */}
-      {/* MENÚ HAMBURGUESA LATERAL MÓVIL (DRAWER SLIDE-IN)        */}
-      {/* ======================================================== */}
-      {showMobileMore && (
-        <div className="fixed inset-0 z-50 flex lg:hidden animate-in fade-in duration-200">
-          {/* BACKDROP CON DESENFOQUE */}
-          <div
-            onClick={() => setShowMobileMore(false)}
-            className="fixed inset-0 bg-black/75 backdrop-blur-sm"
-          />
+  if (!usuario) {
+    return <BancaLogin onLogin={handleLogin} loading={loginLoading} />;
+  }
 
-          {/* PANEL LATERAL DESLIZANTE */}
-          <div className="relative w-4/5 max-w-[320px] h-full bg-[#0a1224] border-r border-[#1a2d4e] p-5 flex flex-col justify-between shadow-2xl z-10 overflow-y-auto animate-in slide-in-from-left duration-200">
-            {/* ENCABEZADO: PERFIL DEL CLIENTE */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between border-b border-[#14233e] pb-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-tr from-[#e11d48] to-[#00d2ff] font-display font-black text-sm text-white shadow-lg shadow-rose-500/30">
-                    {usuario ? `${usuario.nombres[0]}${usuario.apellidos[0]}`.toUpperCase() : "CB"}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-display font-bold text-sm text-white truncate leading-tight">
-                      {usuario ? `${usuario.nombres} ${usuario.apellidos}` : "Cliente Bancario"}
-                    </p>
-                    <p className="text-[11px] text-slate-400 font-mono truncate">
-                      {usuario?.tipo_documento || "C.C."} {usuario?.numero_documento || "----------"}
-                    </p>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-400 mt-0.5">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Cuenta Activa
-                    </span>
-                  </div>
-                </div>
+  const saldoActual = Number(cuentaActiva?.saldo) || 0;
+  const valorNum = parseFloat(montoTransferir) || 0;
+  const gmf4x1000 = Math.round(valorNum * 0.004);
 
-                <button
-                  onClick={() => setShowMobileMore(false)}
-                  className="grid h-8 w-8 place-items-center rounded-full bg-slate-800 text-slate-400 hover:text-white shrink-0"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
+  const movimientosFiltrados = movimientos.filter((m) => {
+    if (!searchTerm.trim()) return true;
+    const t = searchTerm.toLowerCase();
+    return (
+      m.descripcion?.toLowerCase().includes(t) ||
+      m.tipo_operacion?.toLowerCase().includes(t) ||
+      String(m.valor).includes(t)
+    );
+  });
 
-              {/* LISTA DE FUNCIONALIDADES CLASIFICADAS */}
-              <div className="space-y-4 pt-1">
-                {/* GRUPO 1: OPERACIONES */}
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 mb-1">
-                    Operaciones
-                  </p>
-                  {[
-                    { id: "inicio", label: "Inicio / Resumen", icon: LayoutDashboard },
-                    { id: "cuentas", label: "Tus Cuentas Bancarias", icon: Wallet },
-                    { id: "transferencias", label: "Transferir Dinero", icon: ArrowLeftRight },
-                    { id: "tarjetas", label: "Tarjetas & Datáfono", icon: CreditCard, badge: "POS" },
-                  ].map((item) => {
-                    const isActive = activeTab === item.id;
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => selectTab(item.id as BancaTab)}
-                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold transition-all ${
-                          isActive
-                            ? "bg-[#e11d48] text-white shadow-md shadow-rose-600/30"
-                            : "text-slate-300 hover:bg-[#111e38] hover:text-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Icon className={`h-4 w-4 ${isActive ? "text-white" : "text-[#38bdf8]"}`} />
-                          <span>{item.label}</span>
-                        </div>
-                        {item.badge && (
-                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                            isActive ? "bg-white/20 text-white" : "bg-rose-500/20 text-rose-300"
-                          }`}>
-                            {item.badge}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
+  const contactosEquipo = [
+    { nombre: "Valentina Leal", cuenta: "700111223344" },
+    { nombre: "Sergio Ramos", cuenta: "700222334455" },
+    { nombre: "Dana Manrique", cuenta: "700333445566" },
+  ].filter((c) => c.cuenta !== cuentaActiva?.numero_cuenta);
 
-                {/* GRUPO 2: PRODUCTOS & INVERSIÓN */}
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 mb-1">
-                    Productos & Inversión
-                  </p>
-                  {[
-                    { id: "ahorros", label: "Ahorros y CDT", icon: PiggyBank },
-                    { id: "prestamos", label: "Créditos y Préstamos", icon: Landmark },
-                  ].map((item) => {
-                    const isActive = activeTab === item.id;
-                    const Icon = item.icon;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => selectTab(item.id as BancaTab)}
-                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold transition-all ${
-                          isActive
-                            ? "bg-[#e11d48] text-white shadow-md shadow-rose-600/30"
-                            : "text-slate-300 hover:bg-[#111e38] hover:text-white"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <Icon className={`h-4 w-4 ${isActive ? "text-white" : "text-[#38bdf8]"}`} />
-                          <span>{item.label}</span>
-                        </div>
-                        <ChevronRight className="h-3.5 w-3.5 opacity-50" />
-                      </button>
-                    );
-                  })}
-
-                  {/* ACCESO A CAJERO AUTOMÁTICO - SACAR PLATA */}
-                  <button
-                    onClick={() => {
-                      setShowMobileMore(false);
-                      handleGenerarCodigoRetiro();
-                    }}
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-rose-300 hover:bg-[#111e38] hover:text-white transition-all border border-rose-500/20 bg-rose-950/20"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Landmark className="h-4 w-4 text-rose-400" />
-                      <span>Sacar Dinero (Código Cajero)</span>
-                    </div>
-                    <span className="text-[9px] font-bold bg-rose-500/30 text-rose-200 px-1.5 py-0.5 rounded-full">
-                      CÓDIGO
-                    </span>
-                  </button>
-                </div>
-
-                {/* GRUPO 3: SEGURIDAD */}
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 mb-1">
-                    Configuración
-                  </p>
-                  <button
-                    onClick={() => selectTab("ajustes")}
-                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold transition-all ${
-                      activeTab === "ajustes"
-                        ? "bg-[#e11d48] text-white shadow-md shadow-rose-600/30"
-                        : "text-slate-300 hover:bg-[#111e38] hover:text-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Settings className={`h-4 w-4 ${activeTab === "ajustes" ? "text-white" : "text-[#38bdf8]"}`} />
-                      <span>Ajustes & Seguridad</span>
-                    </div>
-                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-                  </button>
-                </div>
-
-                {/* GRUPO 4: OTROS CANALES */}
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2 mb-1">
-                    Otros Canales
-                  </p>
-                  <a
-                    href="/cajero"
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-rose-300 hover:bg-[#111e38] transition-all border border-rose-500/20 bg-rose-950/20"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <CreditCard className="h-4 w-4 text-rose-400" />
-                      <span>Cajero Automático ATM</span>
-                    </div>
-                  </a>
-                  <a
-                    href="/admin"
-                    className="flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-xs font-semibold text-pink-300 hover:bg-[#111e38] transition-all border border-pink-500/20 bg-pink-950/20"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <ShieldCheck className="h-4 w-4 text-pink-400" />
-                      <span>Consola Administrativa</span>
-                    </div>
-                  </a>
-                </div>
-              </div>
+  return (
+    <div className="min-h-screen bg-[#f8f4f6] text-slate-800">
+      {/* CABECERA SUPERIOR ROJA CARMESÍ (SIN SIDEBAR LATERAL) */}
+      <header className="bg-gradient-to-r from-rose-600 via-rose-600 to-pink-600 text-white shadow-md">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-white text-rose-600 flex items-center justify-center shadow-sm">
+              <Heart className="h-5 w-5 fill-rose-600" />
             </div>
-
-            {/* PIE DEL MENÚ LATERAL: CERRAR SESIÓN */}
-            <div className="pt-4 mt-4 border-t border-[#14233e] space-y-2">
-              <button
-                onClick={handleLogout}
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/30 bg-rose-950/30 p-2.5 text-xs font-semibold text-rose-300 hover:bg-rose-900/40 transition-all"
-              >
-                <LogOut className="h-4 w-4" />
-                <span>Cerrar sesión segura</span>
-              </button>
-              <p className="text-[10px] text-center text-slate-500 font-mono">
-                Banco de Corazones Móvil · v2.4.0
+            <div>
+              <h1 className="font-bold text-lg leading-tight">Banco de Corazones</h1>
+              <p className="text-xs text-rose-100">
+                Sucursal Personas · {usuario.nombres} {usuario.apellidos}
               </p>
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            <a
+              href="/cajero"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+            >
+              <CreditCard className="h-3.5 w-3.5" /> Cajero ATM
+            </a>
+            <a
+              href="/admin"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Admin
+            </a>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-white text-rose-700 hover:bg-rose-50 px-3 py-1.5 text-xs font-bold shadow-sm transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" /> Salir
+            </button>
+          </div>
         </div>
-      )}
 
-      {/* MODAL MODERNO: SACAR DINERO EN CAJERO CON CÓDIGO OTP */}
-      {showModalSacarPlata && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-sm rounded-3xl border border-[#1d2f50] bg-[#091224] p-5 sm:p-6 shadow-2xl space-y-4 text-left animate-in zoom-in-95 duration-200">
-            {/* ENCABEZADO MODAL */}
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                  <Landmark className="h-5 w-5" />
+        {/* BARRA DE PESTAÑAS HORIZONTAL */}
+        <div className="bg-white border-b border-rose-100 text-slate-700">
+          <div className="max-w-6xl mx-auto px-4 flex overflow-x-auto gap-2 py-2">
+            {[
+              { id: "resumen", label: "Mi Cuenta y Resumen", icon: Wallet },
+              { id: "transferir", label: "Enviar Dinero", icon: ArrowLeftRight },
+              { id: "pin", label: "Pin de Retiro Cajero", icon: KeyRound },
+              { id: "extracto", label: "Historial de Movimientos", icon: Search },
+            ].map((t) => {
+              const Icon = t.icon;
+              const active = activeTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id as any)}
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold whitespace-nowrap transition-all ${
+                    active
+                      ? "bg-rose-600 text-white shadow-sm"
+                      : "text-slate-600 hover:bg-rose-50 hover:text-rose-600"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </header>
+
+      {/* CONTENIDO CENTRAL */}
+      <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
+        {/* ============================================================ */}
+        {/* PESTAÑA 1: RESUMEN GENERAL EN 2 COLUMNAS                     */}
+        {/* ============================================================ */}
+        {activeTab === "resumen" && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* COLUMNA IZQUIERDA: TARJETA DE CUENTA Y ACCESOS */}
+            <div className="lg:col-span-5 space-y-5">
+              <div className="rounded-2xl bg-gradient-to-br from-rose-600 via-rose-500 to-pink-600 p-6 text-white shadow-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-rose-100">
+                    Cuenta {cuentaActiva?.tipo_cuenta || "Ahorros"} Corazón
+                  </span>
+                  <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-bold">
+                    {cuentaActiva?.estado_cuenta || "ACTIVA"}
+                  </span>
                 </div>
-                <div>
-                  <h3 className="font-display font-bold text-base text-white leading-tight">
-                    Sacar Dinero en Cajero
-                  </h3>
-                  <p className="text-[11px] text-slate-400">Retiro sin tarjeta con código único</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowModalSacarPlata(false)}
-                className="grid h-8 w-8 place-items-center rounded-full bg-slate-800 text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
 
-            {loadingCodigo ? (
-              <div className="py-8 text-center space-y-2">
-                <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-rose-500 border-t-transparent" />
-                <p className="text-xs text-slate-400">Generando tu código de retiro seguro...</p>
-              </div>
-            ) : (
-              <div className="space-y-3.5 text-xs">
-                {/* CAJA DESTACADA DEL CÓDIGO */}
-                <div className="rounded-2xl border border-rose-500/30 bg-gradient-to-b from-[#0b1b36] to-[#1a070d] p-4 text-center space-y-2.5 shadow-inner">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-300">
-                    Tu Código de Retiro (Válido 30 min)
-                  </p>
-
-                  <div className="flex items-center justify-center gap-3">
-                    <p
-                      onClick={() => copiarTexto(codigoRetiro || "", "codigo")}
-                      title="Haz clic para copiar"
-                      className="font-mono text-3xl sm:text-4xl font-black tracking-widest text-white cursor-pointer hover:text-rose-300 transition-colors select-all"
-                    >
-                      {codigoRetiro ? `${codigoRetiro.slice(0, 3)} ${codigoRetiro.slice(3)}` : "------"}
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => copiarTexto(codigoRetiro || "", "codigo")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 shadow-md ${
-                        copiadoCodigo
-                          ? "bg-emerald-500 text-slate-950 shadow-emerald-500/40 scale-105"
-                          : "bg-rose-600 hover:bg-rose-500 text-white shadow-rose-500/25"
-                      }`}
-                      title="Copiar código de retiro"
-                    >
-                      {copiadoCodigo ? (
-                        <>
-                          <Check className="h-4 w-4" />
-                          <span>¡Copiado!</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-4 w-4" />
-                          <span>Copiar</span>
-                        </>
-                      )}
-                    </button>
+                <div className="mt-4">
+                  <span className="text-xs text-rose-100 block">Saldo Disponible</span>
+                  <div className="text-3xl sm:text-4xl font-extrabold tracking-tight mt-0.5">
+                    {fmt(saldoActual)}
                   </div>
-
-                  {/* MENSAJE DE CONFIRMACIÓN VISUAL DESTACADO */}
-                  {copiadoCodigo ? (
-                    <div className="rounded-xl bg-emerald-500/20 border border-emerald-500/50 py-1.5 px-3 text-center text-xs font-bold text-emerald-300 flex items-center justify-center gap-1.5 animate-in fade-in zoom-in-95 duration-150">
-                      <Check className="h-4 w-4 text-emerald-400" />
-                      <span>¡Código copiado al portapapeles!</span>
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-emerald-400 font-medium">
-                      ● Código activo de un solo uso en Cajeros ATM
-                    </p>
-                  )}
                 </div>
 
-                {/* DETALLE DE CUENTA */}
-                <div className="rounded-xl border border-slate-800 bg-[#060b14] p-3 space-y-2">
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span>Número de Cuenta:</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-white">
-                        {cuentaActiva?.numero_cuenta || "400150181053"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => copiarTexto(cuentaActiva?.numero_cuenta || "400150181053", "cuenta")}
-                        className={`grid h-6 w-6 place-items-center rounded-md text-[10px] transition-all ${
-                          copiadoCuenta
-                            ? "bg-emerald-500 text-slate-950 font-bold"
-                            : "bg-slate-800 hover:bg-slate-700 text-slate-300"
-                        }`}
-                        title="Copiar número de cuenta"
-                      >
-                        {copiadoCuenta ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-400">
-                    <span>Saldo Disponible:</span>
-                    <span className="font-mono font-bold text-emerald-400">
-                      {fmt(saldoReal)}
+                <div className="mt-5 pt-4 border-t border-white/20 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="text-rose-100 block text-[11px]">Número de Cuenta / Tarjeta</span>
+                    <span className="font-mono font-bold text-sm tracking-wider">
+                      {cuentaActiva?.numero_cuenta}
                     </span>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => copiarTexto(cuentaActiva?.numero_cuenta || "")}
+                    className="inline-flex items-center gap-1 rounded-lg bg-white/20 hover:bg-white/30 px-2.5 py-1.5 text-xs font-semibold"
+                  >
+                    {copiado ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    <span>Copiar</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* DATOS DEL TITULAR */}
+              <div className="rounded-2xl bg-white border border-slate-200 p-5 shadow-sm space-y-3">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-600">
+                  <User className="h-4 w-4" />
+                  <span>Ficha del Asociado</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                    <span className="text-slate-500 block">Titular</span>
+                    <strong className="text-slate-900 mt-0.5 block">
+                      {usuario.nombres} {usuario.apellidos}
+                    </strong>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                    <span className="text-slate-500 block">Documento</span>
+                    <strong className="text-slate-900 font-mono mt-0.5 block">
+                      {usuario.numero_documento}
+                    </strong>
+                  </div>
                 </div>
 
-                {/* PASOS DE INSTRUCCIÓN */}
-                <div className="rounded-xl bg-slate-900/60 p-3 space-y-1 text-slate-300 text-[11px]">
-                  <p className="font-bold text-white mb-0.5">¿Cómo retirar en el Cajero?</p>
-                  <p>1. Ingresa a la pantalla del Cajero Virtual.</p>
-                  <p>2. Ingresa tu número de cuenta: <span className="font-mono font-bold text-rose-300">{cuentaActiva?.numero_cuenta || "400150181053"}</span></p>
-                  <p>3. Digita tu código generado: <span className="font-mono font-bold text-rose-300">{codigoRetiro}</span></p>
+                <div className="grid grid-cols-2 gap-2.5 pt-1">
+                  <Button
+                    type="button"
+                    onClick={() => setActiveTab("transferir")}
+                    className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold h-10 rounded-xl"
+                  >
+                    <ArrowLeftRight className="h-3.5 w-3.5 mr-1.5" /> Enviar Dinero
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setActiveTab("pin");
+                      handleGenerarPin();
+                    }}
+                    className="border-rose-200 text-rose-700 hover:bg-rose-50 text-xs font-bold h-10 rounded-xl"
+                  >
+                    <KeyRound className="h-3.5 w-3.5 mr-1.5" /> Retirar en Cajero
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* COLUMNA DERECHA: ÚLTIMOS MOVIMIENTOS DE LA CUENTA */}
+            <div className="lg:col-span-7">
+              <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-4 border-b border-slate-100">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">Movimientos Recientes</h2>
+                    <p className="text-xs text-slate-500">Últimas operaciones registradas en tu cuenta</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => cargarResumen()}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Actualizar
+                  </button>
                 </div>
 
-                {/* BOTÓN PARA ENTRAR DIRECTO AL CAJERO CON DATOS */}
-                <button
-                  disabled={loadingCodigo || !codigoRetiro || codigoRetiro === "null"}
-                  onClick={() => {
-                    if (!codigoRetiro || codigoRetiro === "null") {
-                      toast.error("El código de retiro aún no ha sido generado.");
-                      return;
-                    }
-                    const cNum = cuentaActiva?.numero_cuenta || "400110203040";
-                    window.location.href = `/cajero?cuenta=${cNum}&codigo=${codigoRetiro}`;
-                  }}
-                  className="w-full rounded-xl bg-gradient-to-r from-[#e11d48] to-[#00d2ff] hover:opacity-95 active:scale-95 py-3 text-xs font-bold text-white transition-all shadow-lg shadow-rose-500/25 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Landmark className="h-4 w-4" />
-                  <span>Entrar al Cajero Virtual con este Código →</span>
-                </button>
+                {movimientos.length === 0 ? (
+                  <p className="py-10 text-center text-xs text-slate-400">
+                    No tienes movimientos registrados todavía.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-100 mt-2">
+                    {movimientos.slice(0, 6).map((m) => {
+                      const esCredito = m.sentido === "CREDITO";
+                      return (
+                        <div key={m.id} className="py-3.5 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div
+                              className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${
+                                esCredito
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-rose-100 text-rose-700"
+                              }`}
+                            >
+                              {esCredito ? (
+                                <ArrowDownLeft className="h-4 w-4" />
+                              ) : (
+                                <ArrowUpRight className="h-4 w-4" />
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">
+                                {m.descripcion || m.tipo_operacion}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {new Date(m.fecha).toLocaleString("es-CO")} · {m.canal}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <span
+                              className={`text-sm font-extrabold font-mono ${
+                                esCredito ? "text-emerald-600" : "text-rose-600"
+                              }`}
+                            >
+                              {esCredito ? "+" : "-"}
+                              {fmt(Number(m.valor))}
+                            </span>
+                            <span className="block text-[10px] text-slate-400 font-mono">
+                              Saldo: {fmt(Number(m.saldo_resultante))}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* PESTAÑA 2: ENVIAR DINERO / TRANSFERENCIAS                    */}
+        {/* ============================================================ */}
+        {activeTab === "transferir" && (
+          <div className="max-w-2xl mx-auto rounded-2xl bg-white border border-slate-200 p-6 shadow-sm space-y-5">
+            <div className="border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-bold text-slate-900">Enviar Dinero a Otra Cuenta</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Disponible en tu cuenta: <strong className="text-rose-600">{fmt(saldoActual)}</strong>
+              </p>
+            </div>
+
+            {/* CONTACTOS RÁPIDOS DEL EQUIPO */}
+            <div>
+              <span className="text-xs font-semibold text-slate-600 block mb-2">
+                Seleccionar destinatario frecuente del equipo:
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {contactosEquipo.map((c) => (
+                  <button
+                    key={c.cuenta}
+                    type="button"
+                    onClick={() => setCuentaDestino(c.cuenta)}
+                    className="rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 p-3 text-left transition-all"
+                  >
+                    <span className="block text-xs font-bold text-slate-900">{c.nombre}</span>
+                    <span className="block text-[11px] font-mono text-rose-700">Cuenta: {c.cuenta}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {reciboTransferencia && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" /> Comprobante de Envío Exitoso
+                </div>
+                <p>Cuenta destino: <strong className="font-mono">{reciboTransferencia.destino}</strong></p>
+                <p>Monto enviado: <strong>{fmt(reciboTransferencia.valor)}</strong></p>
+                <p>Impuesto 4x1000: <strong>{fmt(reciboTransferencia.impuesto)}</strong></p>
+              </div>
+            )}
+
+            <form onSubmit={handleTransferir} className="space-y-4">
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Número de Cuenta Destino</Label>
+                <Input
+                  value={cuentaDestino}
+                  onChange={(e) => setCuentaDestino(e.target.value)}
+                  placeholder="Ej: 700222334455"
+                  required
+                  className="mt-1.5 h-11 bg-slate-50 border-slate-300 font-mono text-sm text-slate-900"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Valor a Enviar (COP)</Label>
+                <Input
+                  type="number"
+                  min="1000"
+                  step="1000"
+                  value={montoTransferir}
+                  onChange={(e) => setMontoTransferir(e.target.value)}
+                  placeholder="Ej: 50000"
+                  required
+                  className="mt-1.5 h-11 bg-slate-50 border-slate-300 font-mono text-sm text-slate-900"
+                />
+                {valorNum > 0 && (
+                  <p className="mt-1.5 text-[11px] text-slate-500">
+                    Gravamen 4x1000: <strong>{fmt(gmf4x1000)}</strong> · Total a descontar:{" "}
+                    <strong className="text-rose-600">{fmt(valorNum + gmf4x1000)}</strong>
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <Label className="text-xs font-semibold text-slate-700">Concepto o Mensaje</Label>
+                <Input
+                  value={conceptoTransferir}
+                  onChange={(e) => setConceptoTransferir(e.target.value)}
+                  placeholder="Ej: Pago de almuerzo / Ahorro"
+                  className="mt-1.5 h-11 bg-slate-50 border-slate-300 text-sm text-slate-900"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={enviando}
+                className="w-full h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm"
+              >
+                {enviando ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
+                Confirmar Envío de Dinero
+              </Button>
+            </form>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* PESTAÑA 3: PIN DE RETIRO PARA CAJERO                         */}
+        {/* ============================================================ */}
+        {activeTab === "pin" && (
+          <div className="max-w-lg mx-auto rounded-2xl bg-white border border-slate-200 p-6 text-center shadow-sm space-y-5">
+            <div className="mx-auto h-12 w-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
+              <KeyRound className="h-6 w-6" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Pin de Retiro sin Tarjeta</h2>
+              <p className="text-xs text-slate-500 mt-1">
+                Genera un código temporal de 6 dígitos para retirar efectivo en el Cajero Automático de Banco de Corazones.
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-rose-50 border border-rose-200 p-5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-rose-600 block">
+                Tu Pin Activo de 6 Dígitos
+              </span>
+              <div className="font-mono text-3xl font-extrabold tracking-[0.25em] text-slate-900 my-3">
+                {loadingCodigo ? "••••••" : codigoRetiro || "------"}
+              </div>
+              <span className="text-[11px] text-slate-500 block">
+                Cuenta asociada: <strong className="font-mono">{cuentaActiva?.numero_cuenta}</strong>
+              </span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGenerarPin}
+                disabled={loadingCodigo}
+                className="flex-1 h-11 rounded-xl border-rose-200 text-rose-700 font-bold text-xs"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loadingCodigo ? "animate-spin" : ""}`} />
+                Generar Nuevo Pin
+              </Button>
+
+              <Button
+                type="button"
+                disabled={!codigoRetiro}
+                onClick={() => {
+                  if (!codigoRetiro) return;
+                  window.location.href = `/cajero?cuenta=${encodeURIComponent(
+                    cuentaActiva?.numero_cuenta || ""
+                  )}&codigo=${encodeURIComponent(codigoRetiro)}`;
+                }}
+                className="flex-1 h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs"
+              >
+                <CreditCard className="h-3.5 w-3.5 mr-1.5" /> Ir al Cajero con este Pin
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* PESTAÑA 4: HISTORIAL COMPLETO DE MOVIMIENTOS                 */}
+        {/* ============================================================ */}
+        {activeTab === "extracto" && (
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">Extracto de Movimientos</h2>
+                <p className="text-xs text-slate-500">
+                  Cuenta No. <span className="font-mono font-bold">{cuentaActiva?.numero_cuenta}</span>
+                </p>
+              </div>
+              <div className="w-full sm:w-64">
+                <Input
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Filtrar por concepto o valor..."
+                  className="h-9 bg-slate-50 border-slate-300 text-xs text-slate-900"
+                />
+              </div>
+            </div>
+
+            {movimientosFiltrados.length === 0 ? (
+              <p className="py-10 text-center text-xs text-slate-400">
+                No se encontraron movimientos para mostrar.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500 uppercase text-[11px]">
+                      <th className="py-2.5 px-3">Fecha</th>
+                      <th className="py-2.5 px-3">Concepto</th>
+                      <th className="py-2.5 px-3">Canal</th>
+                      <th className="py-2.5 px-3 text-right">Valor</th>
+                      <th className="py-2.5 px-3 text-right">Saldo Resultante</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {movimientosFiltrados.map((m) => {
+                      const esCredito = m.sentido === "CREDITO";
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50">
+                          <td className="py-3 px-3 text-slate-500 whitespace-nowrap">
+                            {new Date(m.fecha).toLocaleString("es-CO")}
+                          </td>
+                          <td className="py-3 px-3 font-semibold text-slate-900">
+                            {m.descripcion || m.tipo_operacion}
+                          </td>
+                          <td className="py-3 px-3 text-slate-500">{m.canal}</td>
+                          <td
+                            className={`py-3 px-3 text-right font-mono font-bold ${
+                              esCredito ? "text-emerald-600" : "text-rose-600"
+                            }`}
+                          >
+                            {esCredito ? "+" : "-"}
+                            {fmt(Number(m.valor))}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-slate-700">
+                            {fmt(Number(m.saldo_resultante))}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   );
 }

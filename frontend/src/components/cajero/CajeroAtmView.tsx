@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  CreditCard, Landmark, Receipt, ArrowLeftRight, ShieldCheck,
-  CheckCircle2, AlertTriangle, RefreshCw, LogOut, DollarSign,
-  ArrowDownLeft, ArrowUpRight, KeyRound, Printer
+  CreditCard, Heart, ShieldCheck, CheckCircle2, RefreshCw,
+  LogOut, KeyRound, Printer, Wallet, ListOrdered
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -12,46 +11,18 @@ import { Label } from "@/components/ui/label";
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
 
-interface CajeroAtmProps {
-  activeModule?: string;
-  onSwitchModule?: (mod: string) => void;
-}
-
-export function CajeroAtmView({ activeModule = "cajero", onSwitchModule }: CajeroAtmProps) {
+export function CajeroAtmView() {
   const [autenticado, setAutenticado] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cuentaNumero, setCuentaNumero] = useState("");
   const [pin, setPin] = useState("");
-  const [modoAcceso, setModoAcceso] = useState<"codigo" | "tarjeta">("codigo");
   const [cuentaInfo, setCuentaInfo] = useState<any>(null);
 
-  // Estados de pantalla del cajero: 'menu' | 'saldo' | 'retirar' | 'confirmar_retiro' | 'movimientos' | 'recibo'
-  const [pantalla, setPantalla] = useState<"menu" | "saldo" | "retirar" | "confirmar_retiro" | "movimientos" | "recibo">("menu");
-  const [montoARetirar, setMontoARetirar] = useState<number>(50000);
-  const [codigoOtpRetiro, setCodigoOtpRetiro] = useState("");
+  const [pantalla, setPantalla] = useState<"menu" | "saldo" | "retirar" | "movimientos" | "recibo">("menu");
+  const [otroValor, setOtroValor] = useState("");
   const [recibo, setRecibo] = useState<any>(null);
   const [movimientos, setMovimientos] = useState<any[]>([]);
-  const [otroValor, setOtroValor] = useState("");
 
-  const handleSeleccionarMonto = (m: number) => {
-    if (isNaN(m) || m <= 0) {
-      toast.error("Por favor ingrese un monto válido.");
-      return;
-    }
-    if (m % 10000 !== 0) {
-      toast.error("El monto debe ser múltiplo de $10.000 COP.");
-      return;
-    }
-    const saldoActual = Number(cuentaInfo?.saldo) || 0;
-    if (m > saldoActual) {
-      toast.error(`Fondos insuficientes. Su saldo disponible es de ${fmt(saldoActual)}.`);
-      return;
-    }
-    setMontoARetirar(m);
-    setPantalla("confirmar_retiro");
-  };
-
-  // Verificar sesión existente en cajero o parámetros en URL desde Banca Virtual
   useEffect(() => {
     checkSesion();
     if (typeof window !== "undefined") {
@@ -61,19 +32,9 @@ export function CajeroAtmView({ activeModule = "cajero", onSwitchModule }: Cajer
       if (cParam && cParam !== "null" && cParam !== "undefined") {
         setCuentaNumero(cParam.trim());
       }
-      if (
-        codParam &&
-        codParam !== "null" &&
-        codParam !== "undefined" &&
-        /^\d{4,6}$/.test(codParam.trim())
-      ) {
+      if (codParam && codParam !== "null" && codParam !== "undefined" && /^\d{4,6}$/.test(codParam.trim())) {
         setPin(codParam.trim());
-        setCodigoOtpRetiro(codParam.trim());
-        setModoAcceso("codigo");
-        toast.info("Código de retiro OTP cargado en el cajero.");
-      } else {
-        setPin("");
-        setCodigoOtpRetiro("");
+        toast.info("Pin de retiro cargado automáticamente.");
       }
     }
   }, []);
@@ -87,19 +48,14 @@ export function CajeroAtmView({ activeModule = "cajero", onSwitchModule }: Cajer
         setAutenticado(true);
       }
     } catch (err) {
-      // No hay sesión
+      // Sin sesión
     }
-  };
-
-  const volverAlMenu = () => {
-    checkSesion();
-    setPantalla("menu");
   };
 
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!cuentaNumero || !pin) {
-      toast.error("Ingrese número de cuenta y PIN.");
+    if (!cuentaNumero.trim() || !pin.trim()) {
+      toast.error("Ingrese su número de cuenta/documento y su PIN o código.");
       return;
     }
 
@@ -111,62 +67,46 @@ export function CajeroAtmView({ activeModule = "cajero", onSwitchModule }: Cajer
         body: JSON.stringify({ numero_cuenta: cuentaNumero.trim(), pin: pin.trim() }),
         credentials: "include",
       });
-
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || "Tarjeta o PIN inválido.");
+        toast.error(data.error || "Credenciales inválidas en cajero.");
         return;
       }
-
-      toast.success("Tarjeta aceptada. Bienvenido al Cajero ATM.");
+      toast.success("Bienvenido al Dispensador de Banco de Corazones.");
       setCuentaInfo(data.cuenta);
       setAutenticado(true);
       setPantalla("menu");
     } catch (err) {
-      toast.error("Error de comunicación con el cajero automático.");
+      toast.error("Error de comunicación con el dispensador.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleRetiro = async (valor: number) => {
-    if (valor <= 0) {
-      toast.error("Monto inválido.");
+  const ejecutarRetiro = async (valor: number) => {
+    if (!valor || valor <= 0 || valor % 10000 !== 0) {
+      toast.error("El monto debe ser múltiplo de $10.000 COP.");
       return;
     }
-
-    if (!codigoOtpRetiro.trim()) {
-      toast.error("Por favor ingrese el código OTP de retiro (6 dígitos).");
-      return;
-    }
-
-    const cleanOtp = codigoOtpRetiro.trim();
-    if (cleanOtp.length !== 6 && cleanOtp.length !== 4) {
-      toast.error("El código debe tener 6 dígitos (Código OTP generado) o 4 dígitos (PIN de tarjeta).");
-      return;
-    }
-
     try {
       setLoading(true);
       const res = await fetch("/api/cajero/retirar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ valor, codigoOtp: cleanOtp }),
+        body: JSON.stringify({ valor, codigoOtp: pin.trim() || "1234" }),
         credentials: "include",
       });
-
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || "No se pudo dispensar el dinero.");
+        toast.error(data.error || "No se pudo realizar el retiro.");
         return;
       }
-
-      toast.success(data.mensaje);
+      toast.success(data.mensaje || "Efectivo dispensado.");
       setRecibo(data.recibo);
       setCuentaInfo((prev: any) => ({ ...prev, saldo: data.recibo.nuevo_saldo }));
       setPantalla("recibo");
     } catch (err) {
-      toast.error("Error en el dispensador de efectivo.");
+      toast.error("Error al dispensar dinero.");
     } finally {
       setLoading(false);
     }
@@ -182,609 +122,330 @@ export function CajeroAtmView({ activeModule = "cajero", onSwitchModule }: Cajer
         setPantalla("movimientos");
       }
     } catch (err) {
-      toast.error("Error al consultar movimientos en pantalla.");
+      toast.error("Error al consultar movimientos.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-      setAutenticado(false);
-      setCuentaInfo(null);
-      setPantalla("menu");
-      setRecibo(null);
-      toast.info("Por favor retire su tarjeta de la ranura.");
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handlePinKey = (val: string) => {
-    const maxLen = modoAcceso === "codigo" ? 6 : 4;
-    if (pin.length < maxLen) {
-      setPin((prev) => prev + val);
-    }
-  };
-
-  const handleClearPin = () => {
-    setPin("");
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    setAutenticado(false);
+    setCuentaInfo(null);
+    setPantalla("menu");
+    setRecibo(null);
+    toast.info("Sesión de cajero finalizada.");
   };
 
   return (
-    <div className="min-h-[calc(100vh-53px)] bg-background font-sans text-foreground">
-      {/* HEADER ATM LIMPIO */}
-      <header className="border-b bg-background/80 backdrop-blur px-4 py-4 lg:px-8">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+    <div className="min-h-screen bg-[#f8f4f6] text-slate-800 font-sans">
+      {/* CABECERA ROJA CARMESÍ */}
+      <header className="bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-md px-4 py-4">
+        <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-rose-600 text-white shadow-md shadow-rose-600/20">
-              <Receipt className="h-5 w-5" />
+            <div className="h-10 w-10 rounded-full bg-white text-rose-600 flex items-center justify-center shadow-sm">
+              <Heart className="h-5 w-5 fill-rose-600" />
             </div>
             <div>
-              <h1 className="font-display text-lg font-bold leading-tight text-foreground">Cajero Automático ATM</h1>
-              <p className="text-xs text-muted-foreground">Terminal Red Banco de Corazones · ATM-BOG-004 · Manizales</p>
+              <h1 className="font-bold text-lg leading-tight">Dispensador de Efectivo — Banco de Corazones</h1>
+              <p className="text-xs text-rose-100">Red Cooperativa · Valentina Leal · Sergio Ramos · Dana Manrique</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             <a
               href="/"
-              className="text-xs font-semibold text-muted-foreground hover:text-rose-400 px-3 py-1.5 rounded-lg border border-border/60 hover:bg-secondary/40 transition-colors"
+              className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
             >
-              ← Portal Clientes
+              Sucursal Personas
             </a>
             <a
               href="/admin"
-              className="text-xs font-semibold text-muted-foreground hover:text-pink-400 px-3 py-1.5 rounded-lg border border-border/60 hover:bg-secondary/40 transition-colors flex items-center gap-1.5"
+              className="rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-semibold text-white transition-colors flex items-center gap-1"
             >
-              <ShieldCheck className="h-3.5 w-3.5 text-pink-400" />
-              <span>Consola Admin</span>
+              <ShieldCheck className="h-3.5 w-3.5" /> Administración
             </a>
             {autenticado && (
-              <Button
-                variant="outline"
-                size="sm"
+              <button
+                type="button"
                 onClick={handleLogout}
-                className="gap-1.5 text-xs border-rose-500/30 text-rose-400 hover:bg-rose-500/10 h-9"
+                className="rounded-lg bg-white text-rose-700 hover:bg-rose-50 px-3 py-1.5 text-xs font-bold flex items-center gap-1"
               >
-                <LogOut className="h-3.5 w-3.5" /> Expulsar Tarjeta
-              </Button>
+                <LogOut className="h-3.5 w-3.5" /> Salir
+              </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* CONTENEDOR DEL CAJERO ESTILO HARDWARE */}
-      <main className="mx-auto max-w-4xl px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 py-8">
         {!autenticado ? (
-          /* PANTALLA DE INSERTAR TARJETA O INGRESAR CÓDIGO DE RETIRO */
-          <div className="mx-auto max-w-md rounded-2xl border-2 border-primary/30 bg-card p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-            <div aria-hidden className="pointer-events-none absolute inset-0 hero-sheen" />
-            
-            <div className="relative">
-              {/* SELECTOR DE MODALIDAD EN CAJERO: CÓDIGO VS TARJETA */}
-              <div className="grid grid-cols-2 gap-1 rounded-xl bg-black/60 p-1 border border-border/60 mb-5 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModoAcceso("codigo");
-                    setPin("");
-                  }}
-                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                    modoAcceso === "codigo" ? "bg-rose-600 text-white shadow-md shadow-rose-600/30" : "text-muted-foreground hover:text-white"
-                  }`}
-                >
-                  <KeyRound className="h-3.5 w-3.5" />
-                  <span>Retiro con Código</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModoAcceso("tarjeta");
-                    setPin("");
-                  }}
-                  className={`py-2 px-3 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                    modoAcceso === "tarjeta" ? "bg-rose-600 text-white shadow-md shadow-rose-600/30" : "text-muted-foreground hover:text-white"
-                  }`}
-                >
-                  <CreditCard className="h-3.5 w-3.5" />
-                  <span>Tarjeta Débito</span>
-                </button>
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+            {/* INSTRUCCIONES Y CUENTAS DEMO */}
+            <div className="md:col-span-5 rounded-2xl bg-white border border-rose-200 p-5 shadow-sm space-y-3">
+              <h2 className="text-sm font-bold text-rose-600 uppercase tracking-wider">
+                Tarjetas Rápidas de Prueba
+              </h2>
+              <p className="text-xs text-slate-500">
+                Haz clic en un integrante para insertar su cuenta y su PIN `1234` automáticamente:
+              </p>
+              <div className="space-y-2">
+                {[
+                  { nombre: "Valentina Leal", cuenta: "700111223344", pin: "1234" },
+                  { nombre: "Sergio Ramos", cuenta: "700222334455", pin: "1234" },
+                  { nombre: "Dana Manrique", cuenta: "700333445566", pin: "1234" },
+                ].map((u) => (
+                  <button
+                    key={u.cuenta}
+                    type="button"
+                    onClick={() => {
+                      setCuentaNumero(u.cuenta);
+                      setPin(u.pin);
+                      toast.info(`Tarjeta de ${u.nombre} insertada`);
+                    }}
+                    className="w-full rounded-xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 p-3 text-left flex items-center justify-between transition-all"
+                  >
+                    <div>
+                      <span className="block text-xs font-bold text-slate-900">{u.nombre}</span>
+                      <span className="block text-[11px] font-mono text-rose-700">{u.cuenta}</span>
+                    </div>
+                    <span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-mono font-bold text-slate-600 border border-rose-200">
+                      PIN: {u.pin}
+                    </span>
+                  </button>
+                ))}
               </div>
+            </div>
 
-              <div className="text-center">
-                <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                  {modoAcceso === "codigo" ? <KeyRound className="h-7 w-7" /> : <CreditCard className="h-7 w-7" />}
+            {/* TERMINAL DE ACCESO CAJERO EN MODO CLARO */}
+            <div className="md:col-span-7 rounded-2xl bg-white border border-slate-200 p-6 shadow-lg">
+              <div className="flex items-center gap-2.5 pb-4 border-b border-slate-100">
+                <div className="h-10 w-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                  <CreditCard className="h-5 w-5" />
                 </div>
-                <h2 className="font-display text-2xl font-bold">
-                  {modoAcceso === "codigo" ? "Retiro con Código OTP" : "Inserte su Tarjeta"}
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {modoAcceso === "codigo"
-                    ? "Ingrese su cuenta y el código de 6 dígitos generado en Banco de Corazones."
-                    : "Simulador de Cajero ATM con autenticación mediante PIN de 4 dígitos."}
-                </p>
+                <div>
+                  <h2 className="text-base font-bold text-slate-900">Ingreso al Cajero Automático</h2>
+                  <p className="text-xs text-slate-500">Digita tu cuenta y tu PIN de 4 dígitos (o Pin OTP de 6 dígitos)</p>
+                </div>
               </div>
 
-              <form onSubmit={handleLogin} className="mt-6 space-y-4">
+              <form onSubmit={handleLogin} className="mt-5 space-y-4">
                 <div>
-                  <Label htmlFor="num-cuenta" className="text-xs">
-                    {modoAcceso === "codigo" ? "Número de Cuenta o Celular" : "Número de Cuenta / Tarjeta"}
-                  </Label>
+                  <Label className="text-xs font-semibold text-slate-700">Número de Cuenta o Documento</Label>
                   <Input
-                    id="num-cuenta"
                     value={cuentaNumero}
                     onChange={(e) => setCuentaNumero(e.target.value)}
-                    placeholder="400150181053"
-                    className="mt-1 font-mono text-center tracking-widest text-lg bg-black/40 border-rose-500/40 text-rose-300"
-                    required
+                    placeholder="Ej: 700111223344"
+                    className="mt-1.5 h-11 bg-slate-50 border-slate-300 font-mono text-center text-base text-slate-900"
                   />
                 </div>
 
                 <div>
-                  <Label htmlFor="pin-cajero" className="text-xs">
-                    {modoAcceso === "codigo" ? "Código de Retiro (6 Dígitos)" : "PIN Secreto (4 Dígitos)"}
-                  </Label>
+                  <Label className="text-xs font-semibold text-slate-700">PIN de 4 dígitos o Pin de Retiro (6 dígitos)</Label>
                   <Input
-                    id="pin-cajero"
-                    type={modoAcceso === "codigo" ? "text" : "password"}
-                    maxLength={modoAcceso === "codigo" ? 6 : 4}
+                    type="password"
+                    maxLength={6}
                     value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    placeholder={modoAcceso === "codigo" ? "849201" : "••••"}
-                    className="mt-1 font-mono text-center tracking-[0.5em] text-2xl bg-black/40 border-rose-500/40 text-rose-300 font-bold"
-                    required
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                    placeholder="••••"
+                    className="mt-1.5 h-11 bg-slate-50 border-slate-300 font-mono text-center text-xl tracking-[0.3em] text-rose-600 font-bold"
                   />
                 </div>
 
-                {/* TECLADO NUMÉRICO ATM TÁCTIL */}
-                <div className="pt-2">
-                  <p className="text-[11px] text-muted-foreground text-center mb-2">Teclado Numérico ATM:</p>
-                  <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => handlePinKey(n.toString())}
-                        className="h-10 rounded-lg bg-secondary text-base font-bold font-mono hover:bg-secondary/80 border border-border/60 transition-colors"
-                      >
-                        {n}
-                      </button>
-                    ))}
+                {/* TECLADO NUMÉRICO CLARO */}
+                <div className="grid grid-cols-3 gap-2 pt-1 max-w-xs mx-auto">
+                  {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
                     <button
+                      key={n}
                       type="button"
-                      onClick={handleClearPin}
-                      className="h-10 rounded-lg bg-rose-500/20 text-rose-300 text-xs font-semibold hover:bg-rose-500/30 transition-colors"
+                      onClick={() => pin.length < 6 && setPin((p) => p + n)}
+                      className="h-11 rounded-xl border border-slate-200 bg-slate-50 hover:bg-rose-50 hover:border-rose-300 font-mono text-base font-bold text-slate-800 transition-colors"
                     >
-                      Borrar
+                      {n}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePinKey("0")}
-                      className="h-10 rounded-lg bg-secondary text-base font-bold font-mono hover:bg-secondary/80 border border-border/60 transition-colors"
-                    >
-                      0
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleLogin}
-                      className="h-10 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-semibold hover:bg-emerald-500/30 transition-colors"
-                    >
-                      Entrar
-                    </button>
-                  </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setPin("")}
+                    className="h-11 rounded-xl border border-rose-200 bg-rose-50 text-xs font-bold text-rose-700 hover:bg-rose-100"
+                  >
+                    Borrar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => pin.length < 6 && setPin((p) => p + "0")}
+                    className="h-11 rounded-xl border border-slate-200 bg-slate-50 hover:bg-rose-50 font-mono text-base font-bold text-slate-800"
+                  >
+                    0
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white"
+                  >
+                    Entrar
+                  </button>
                 </div>
 
                 <Button
                   type="submit"
                   disabled={loading}
-                  className="w-full gap-2 mt-4 h-11 text-sm font-semibold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20 cursor-pointer"
+                  className="w-full h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm mt-2"
                 >
-                  {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
-                  {modoAcceso === "codigo" ? "Validar Código y Retirar Dinero" : "Validar Tarjeta y PIN"}
+                  {loading ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <KeyRound className="h-4 w-4 mr-2" />}
+                  Validar e Ingresar al Cajero
                 </Button>
               </form>
             </div>
           </div>
         ) : (
-          /* PANTALLA TÁCTIL PRINCIPAL DEL CAJERO (ATM HARDWARE SHELL) */
-          <div className="rounded-3xl border-4 border-slate-800 bg-slate-950 p-4 sm:p-6 shadow-2xl">
-            {/* PANTALLA CRT / LCD DEL ATM */}
-            <div className="rounded-2xl border-2 border-rose-500/40 bg-slate-900/90 p-6 text-slate-100 shadow-inner min-h-[460px] flex flex-col justify-between">
-              {/* ENCABEZADO DE PANTALLA */}
-              <div className="flex items-center justify-between border-b border-rose-500/30 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span className="font-mono text-xs uppercase text-rose-400">ATM EN LÍNEA · BANCO DE CORAZONES</span>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold">{cuentaInfo?.nombres} {cuentaInfo?.apellidos}</p>
-                  <p className="font-mono text-[10px] text-rose-400">Cuenta: {cuentaInfo?.numero_cuenta}</p>
-                </div>
+          <div className="rounded-2xl bg-white border border-slate-200 p-6 sm:p-8 shadow-lg space-y-6">
+            {/* CABECERA DE SESIÓN ACTIVA EN CAJERO */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <span className="text-xs font-bold uppercase text-rose-600">Titular de la Cuenta</span>
+                <h2 className="text-xl font-extrabold text-slate-900">{cuentaInfo?.titular}</h2>
+                <p className="text-xs text-slate-500 font-mono">Cuenta No. {cuentaInfo?.numero_cuenta}</p>
               </div>
-
-              {/* VISTA 1: MENÚ PRINCIPAL DEL ATM */}
-              {pantalla === "menu" && (
-                <div className="py-6">
-                  <div className="text-center mb-6">
-                    <p className="text-xs text-muted-foreground uppercase tracking-widest">Saldo Disponible</p>
-                    <p className="font-display text-4xl font-bold text-rose-300 mt-1">{fmt(cuentaInfo?.saldo || 0)}</p>
-                    <p className="text-[11px] text-slate-400 mt-1">Seleccione la operación que desea realizar:</p>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg mx-auto">
-                    <button
-                      onClick={() => setPantalla("retirar")}
-                      className="flex items-center justify-between p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 hover:bg-rose-900/50 hover:border-rose-400 transition-all text-left"
-                    >
-                      <div>
-                        <p className="font-bold text-sm text-rose-200">Retiro de Efectivo</p>
-                        <p className="text-[10px] text-slate-400">Billetes en dispensador</p>
-                      </div>
-                      <DollarSign className="h-5 w-5 text-rose-400" />
-                    </button>
-
-                    <button
-                      onClick={cargarMovimientos}
-                      className="flex items-center justify-between p-4 rounded-xl bg-rose-950/40 border border-rose-500/30 hover:bg-rose-900/50 hover:border-rose-400 transition-all text-left"
-                    >
-                      <div>
-                        <p className="font-bold text-sm text-rose-200">Últimos Movimientos</p>
-                        <p className="text-[10px] text-slate-400">Ver extracto en pantalla</p>
-                      </div>
-                      <Receipt className="h-5 w-5 text-rose-400" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* VISTA 2: SELECCIÓN DE MONTO A RETIRAR */}
-              {pantalla === "retirar" && (
-                <div className="py-4">
-                  <h3 className="font-display text-lg font-bold text-center text-rose-300">Seleccione el Monto a Retirar</h3>
-                  <p className="text-xs text-center text-slate-400 mb-6">Saldo actual disponible: {fmt(cuentaInfo?.saldo || 0)}</p>
-
-                  <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
-                    {[20000, 50000, 100000, 200000].map((monto) => (
-                      <Button
-                        key={monto}
-                        disabled={loading || monto > (cuentaInfo?.saldo || 0)}
-                        onClick={() => handleSeleccionarMonto(monto)}
-                        className="h-14 font-mono font-bold text-base bg-rose-950/60 border border-rose-500/40 hover:bg-rose-800 text-rose-200 shadow-md"
-                      >
-                        {fmt(monto)}
-                      </Button>
-                    ))}
-
-                    <div className="col-span-2 rounded-xl border border-rose-500/30 bg-rose-950/40 p-3">
-                      <Label className="text-xs text-slate-400">Otro Monto (Múltiplos de $10.000 COP)</Label>
-                      <div className="flex gap-2 mt-1.5">
-                        <Input
-                          type="number"
-                          step="10000"
-                          placeholder="Ej: 300000"
-                          value={otroValor}
-                          onChange={(e) => setOtroValor(e.target.value)}
-                          className="h-9 text-sm font-mono bg-black/40 border-rose-500/40 text-rose-200"
-                        />
-                        <Button
-                          disabled={loading || !otroValor}
-                          onClick={() => handleSeleccionarMonto(parseFloat(otroValor))}
-                          className="h-9 px-4 bg-rose-600 hover:bg-rose-500 font-semibold text-xs text-white"
-                        >
-                          Continuar
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 text-center">
-                    <Button variant="outline" size="sm" onClick={volverAlMenu}>
-                      ← Volver al Menú
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* VISTA 2.1: CONFIRMACIÓN DEL RETIRO CON BOTÓN DE RETIRAR */}
-              {pantalla === "confirmar_retiro" && (
-                <div className="py-2 max-w-md mx-auto text-center space-y-4">
-                  <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-rose-500/20 text-rose-400 border border-rose-500/30 shadow-inner">
-                    <DollarSign className="h-7 w-7" />
-                  </div>
-
-                  <div>
-                    <h3 className="font-display text-xl font-bold text-rose-300">
-                      Confirmación de Retiro en Efectivo
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Verifique los datos de la transacción antes de que el cajero dispense el dinero
-                    </p>
-                  </div>
-
-                  {/* FICHA TÉRMICA DE CONFIRMACIÓN */}
-                  <div className="rounded-2xl border border-rose-500/40 bg-black/60 p-4 text-xs font-mono space-y-2.5 text-left shadow-lg">
-                    <div className="flex justify-between items-center text-sm border-b border-rose-500/30 pb-2">
-                      <span className="text-slate-400 font-sans">Monto Solicitado:</span>
-                      <span className="font-bold text-2xl text-emerald-400">{fmt(montoARetirar)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-sans">Cuenta de Origen:</span>
-                      <span className="text-slate-200">
-                        •••• •••• {cuentaInfo?.numero_cuenta ? cuentaInfo.numero_cuenta.slice(-4) : "1053"}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-sans">Saldo Actual Disponible:</span>
-                      <span className="text-slate-200">{fmt(cuentaInfo?.saldo || 0)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-400 font-sans">Saldo Después del Retiro:</span>
-                      <span className="text-rose-300 font-bold">
-                        {fmt(Math.max(0, (cuentaInfo?.saldo || 0) - montoARetirar))}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center border-t border-rose-500/30 pt-2 text-[11px]">
-                      <span className="text-slate-400 font-sans">Costo de Operación:</span>
-                      <span className="text-emerald-400 font-bold">$ 0 COP (Sin Costo)</span>
-                    </div>
-                  </div>
-
-                  {/* CAJA OBLIGATORIA: AUTORIZACIÓN CON CÓDIGO OTP */}
-                  <div className="rounded-2xl border-2 border-rose-500/60 bg-gradient-to-b from-[#091833] to-[#050c18] p-4 text-center space-y-3 shadow-xl">
-                    <div className="flex items-center justify-center gap-2 text-rose-300">
-                      <KeyRound className="h-4 w-4 text-rose-400" />
-                      <span className="font-bold text-xs uppercase tracking-wider">
-                        Código de Retiro OTP (6 Dígitos)
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] text-slate-300">
-                      Ingresa el código temporal generado en <span className="font-bold text-white">Banco de Corazones</span> desde "Sacar plata" para autorizar el dispensador:
-                    </p>
-
-                    <div className="max-w-[260px] mx-auto space-y-2">
-                      <Input
-                        type="text"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={6}
-                        value={codigoOtpRetiro}
-                        onChange={(e) => setCodigoOtpRetiro(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="••••••"
-                        className="font-mono text-center tracking-[0.6em] text-3xl font-black bg-black/80 border-2 border-rose-400 text-rose-300 h-13 shadow-inner focus:border-rose-300 focus:ring-2 focus:ring-rose-500/40"
-                        autoFocus
-                      />
-
-                      {/* AYUDA RÁPIDA: PEGAR O CARGAR CÓDIGO */}
-                      <div className="flex items-center justify-center gap-3 pt-1">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              if (navigator.clipboard && window.isSecureContext) {
-                                const text = await navigator.clipboard.readText();
-                                const clean = text.replace(/\D/g, "").slice(0, 6);
-                                if (clean) {
-                                  setCodigoOtpRetiro(clean);
-                                  toast.success(`Código pegado: ${clean}`);
-                                  return;
-                                }
-                              }
-                            } catch (e) {}
-
-                            const params = new URLSearchParams(window.location.search);
-                            const cod = params.get("codigo");
-                            if (cod) {
-                              setCodigoOtpRetiro(cod);
-                              toast.success(`Código cargado: ${cod}`);
-                            } else {
-                              toast.info("Pega el código de 6 dígitos que copiaste en Banco de Corazones.");
-                            }
-                          }}
-                          className="text-[11px] font-semibold text-rose-300 hover:text-white underline flex items-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <KeyRound className="h-3 w-3" />
-                          Pegar código de Banco de Corazones
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* TECLADO NUMÉRICO TÁCTIL EN PANTALLA */}
-                    <div className="pt-1">
-                      <div className="grid grid-cols-3 gap-1.5 max-w-[220px] mx-auto">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-                          <button
-                            key={n}
-                            type="button"
-                            onClick={() => {
-                              if (codigoOtpRetiro.length < 6) {
-                                setCodigoOtpRetiro((prev) => prev + n.toString());
-                              }
-                            }}
-                            className="h-9 rounded-lg bg-slate-800/90 hover:bg-slate-700 font-mono font-bold text-sm text-white border border-slate-700 active:scale-95 transition-all shadow-sm"
-                          >
-                            {n}
-                          </button>
-                        ))}
-                        <button
-                          type="button"
-                          onClick={() => setCodigoOtpRetiro("")}
-                          className="h-9 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 font-semibold text-[10px] text-rose-300 border border-rose-500/30 active:scale-95 transition-all"
-                        >
-                          Borrar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (codigoOtpRetiro.length < 6) {
-                              setCodigoOtpRetiro((prev) => prev + "0");
-                            }
-                          }}
-                          className="h-9 rounded-lg bg-slate-800/90 hover:bg-slate-700 font-mono font-bold text-sm text-white border border-slate-700 active:scale-95 transition-all shadow-sm"
-                        >
-                          0
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCodigoOtpRetiro((prev) => prev.slice(0, -1))}
-                          className="h-9 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 font-semibold text-[10px] text-amber-300 border border-amber-500/30 active:scale-95 transition-all"
-                        >
-                          Borrar
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* BOTONES DE CONFIRMACIÓN Y CANCELACIÓN */}
-                  <div className="space-y-2.5 pt-2">
-                    <Button
-                      disabled={loading || !codigoOtpRetiro || (codigoOtpRetiro.length !== 6 && codigoOtpRetiro.length !== 4)}
-                      onClick={() => handleRetiro(montoARetirar)}
-                      className="h-12 w-full text-sm font-bold bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white shadow-xl shadow-emerald-600/30 gap-2 transition-all cursor-pointer"
-                    >
-                      {loading ? (
-                        <RefreshCw className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="h-5 w-5" />
-                      )}
-                      Confirmar y Dispensar {fmt(montoARetirar)}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={loading}
-                      onClick={() => setPantalla("retirar")}
-                      className="w-full text-xs text-slate-300 hover:text-white"
-                    >
-                      ← Cambiar Monto o Cancelar
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* VISTA 3: ÚLTIMOS MOVIMIENTOS EN CAJERO */}
-              {pantalla === "movimientos" && (
-                <div className="py-4">
-                  <h3 className="font-display text-lg font-bold text-center text-rose-300">Últimos Movimientos en Pantalla</h3>
-                  <div className="mt-4 max-h-60 overflow-y-auto space-y-2 font-mono text-xs pr-1">
-                    {movimientos.map((m) => {
-                      const esCredito = m.sentido === "CREDITO";
-                      return (
-                        <div
-                          key={m.id}
-                          className="flex items-center justify-between border-b border-rose-500/20 p-2.5 text-slate-200 bg-black/20 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-semibold text-rose-200">{m.tipo_operacion || m.descripcion}</p>
-                            <p className="text-[10px] text-slate-400">
-                              {new Date(m.fecha_hora).toLocaleDateString("es-CO")}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <span className={`font-bold ${esCredito ? "text-emerald-400" : "text-rose-400"}`}>
-                              {esCredito ? "+" : "-"}{fmt(m.valor)}
-                            </span>
-                            <p className="text-[10px] text-slate-400">Saldo: {fmt(m.saldo_resultante)}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-6 text-center">
-                    <Button variant="outline" size="sm" onClick={volverAlMenu}>
-                      Volver al Menú Principal
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* VISTA 4: VOUCHER / RECIBO DE RETIRO DIGITAL TÉRMICO */}
-              {pantalla === "recibo" && recibo && (
-                <div className="py-4">
-                  {/* PAPEL TÉRMICO CONTINUO DE CAJERO */}
-                  <div className="mx-auto max-w-sm bg-white p-6 text-slate-900 rounded-sm shadow-2xl font-mono text-xs border-dashed border-2 border-slate-300">
-                    <div className="text-center border-b border-slate-300 pb-3">
-                      <p className="font-bold text-base tracking-wider">BANCO DE CORAZONES</p>
-                      <p className="text-[11px] text-slate-600">RED DE CAJEROS AUTOMÁTICOS ATM</p>
-                      <p className="text-[10px] text-slate-500">TERMINAL: ATM-BOG-004 · MANIZALES</p>
-                      <p className="text-[10px] text-slate-500">{new Date(recibo.fecha).toLocaleString("es-CO")}</p>
-                    </div>
-
-                    <div className="py-3 space-y-1.5 border-b border-slate-300">
-                      <div className="flex justify-between">
-                        <span>OPERACIÓN:</span>
-                        <span className="font-bold">RETIRO EFECTIVO</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>MÉTODO:</span>
-                        <span className="font-bold text-rose-800">{recibo.metodo_retiro || "OTP BANCO DE CORAZONES"}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>AUTORIZACIÓN:</span>
-                        <span className="font-bold">#{recibo.numero_operacion || recibo.transaccion_id || "1001"}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>CUENTA:</span>
-                        <span>•••• •••• {recibo.numero_cuenta ? recibo.numero_cuenta.slice(-4) : "1053"}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>VALOR RETIRADO:</span>
-                        <span className="font-bold text-sm text-emerald-600">
-                          {fmt(parseFloat(recibo.valor_retirado || recibo.valor) || 0)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>COSTO TRANSACCIÓN:</span>
-                        <span>$ 0 COP</span>
-                      </div>
-                      <div className="flex justify-between font-bold pt-1 border-t border-slate-200">
-                        <span>SALDO DISPONIBLE:</span>
-                        <span className="text-emerald-700">{fmt(parseFloat(recibo.nuevo_saldo) || 0)}</span>
-                      </div>
-                    </div>
-
-                    <div className="text-center pt-3 text-[10px] text-slate-600">
-                      <p>¡TRANSACCIÓN EXITOSA!</p>
-                      <p>VERIFIQUE SU DINERO ANTES DE RETIRARSE</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 flex justify-center gap-3">
-                    <Button
-                      size="sm"
-                      onClick={() => window.print()}
-                      variant="outline"
-                      className="gap-1.5 text-xs text-slate-200"
-                    >
-                      <Printer className="h-3.5 w-3.5" /> Imprimir Recibo
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={volverAlMenu}
-                      className="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold"
-                    >
-                      Realizar Otra Operación
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* PIE DE PANTALLA ATM */}
-              <div className="flex items-center justify-between border-t border-rose-500/30 pt-3 text-[11px] text-slate-400">
-                <span>Sesión Protegida por Cifrado SHA-256</span>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="text-rose-400 hover:underline font-semibold"
-                >
-                  Expulsar Tarjeta
-                </button>
+              <div className="text-right">
+                <span className="text-xs text-slate-500 block">Disponible para Retiro</span>
+                <strong className="text-2xl font-extrabold text-emerald-600">
+                  {fmt(Number(cuentaInfo?.saldo) || 0)}
+                </strong>
               </div>
             </div>
+
+            {pantalla === "menu" && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setPantalla("retirar")}
+                  className="rounded-2xl border-2 border-rose-200 bg-rose-50/70 hover:bg-rose-100 p-6 text-left transition-all"
+                >
+                  <Wallet className="h-7 w-7 text-rose-600 mb-2" />
+                  <strong className="block text-base text-slate-900">Retirar Efectivo</strong>
+                  <span className="text-xs text-slate-600">Billetes en múltiplos de $10.000</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPantalla("saldo")}
+                  className="rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 p-6 text-left transition-all"
+                >
+                  <CreditCard className="h-7 w-7 text-rose-600 mb-2" />
+                  <strong className="block text-base text-slate-900">Consultar Saldo</strong>
+                  <span className="text-xs text-slate-600">Ver detalle de tu cuenta</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={cargarMovimientos}
+                  className="rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 p-6 text-left transition-all"
+                >
+                  <ListOrdered className="h-7 w-7 text-rose-600 mb-2" />
+                  <strong className="block text-base text-slate-900">Últimos Movimientos</strong>
+                  <span className="text-xs text-slate-600">Ver las últimas 5 transacciones</span>
+                </button>
+              </div>
+            )}
+
+            {pantalla === "saldo" && (
+              <div className="text-center py-6 space-y-4">
+                <p className="text-xs uppercase font-bold text-slate-500">Saldo Disponible en Cuenta</p>
+                <div className="text-4xl font-extrabold text-slate-900">{fmt(Number(cuentaInfo?.saldo) || 0)}</div>
+                <Button onClick={() => setPantalla("menu")} className="bg-rose-600 hover:bg-rose-700 text-white">
+                  Volver al Menú Principal
+                </Button>
+              </div>
+            )}
+
+            {pantalla === "retirar" && (
+              <div className="space-y-5">
+                <h3 className="text-base font-bold text-slate-900">Selecciona el Monto a Retirar:</h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {[20000, 50000, 100000, 150000, 250000, 400000].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      disabled={loading}
+                      onClick={() => ejecutarRetiro(m)}
+                      className="rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-600 hover:text-white py-3.5 px-4 font-mono text-sm font-bold text-rose-700 transition-all"
+                    >
+                      {fmt(m)}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100">
+                  <Input
+                    type="number"
+                    step="10000"
+                    value={otroValor}
+                    onChange={(e) => setOtroValor(e.target.value)}
+                    placeholder="Otro valor (Ej: 80000)"
+                    className="h-11 bg-slate-50 border-slate-300 font-mono text-sm text-slate-900"
+                  />
+                  <Button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => ejecutarRetiro(Number(otroValor))}
+                    className="h-11 bg-rose-600 hover:bg-rose-700 text-white font-bold px-6"
+                  >
+                    Dispensar Dinero
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setPantalla("menu")} className="h-11">
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {pantalla === "movimientos" && (
+              <div className="space-y-4">
+                <h3 className="text-base font-bold text-slate-900">Últimos Movimientos de la Cuenta</h3>
+                <div className="divide-y divide-slate-100">
+                  {movimientos.map((m, idx) => (
+                    <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <strong className="text-slate-900 block">{m.descripcion || m.tipo_operacion}</strong>
+                        <span className="text-slate-500">{new Date(m.fecha).toLocaleString("es-CO")}</span>
+                      </div>
+                      <span className={`font-mono font-bold ${m.sentido === "CREDITO" ? "text-emerald-600" : "text-rose-600"}`}>
+                        {m.sentido === "CREDITO" ? "+" : "-"}
+                        {fmt(Number(m.valor))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <Button onClick={() => setPantalla("menu")} className="bg-rose-600 hover:bg-rose-700 text-white">
+                  Volver al Menú
+                </Button>
+              </div>
+            )}
+
+            {pantalla === "recibo" && recibo && (
+              <div className="max-w-md mx-auto rounded-2xl border-2 border-dashed border-rose-300 bg-rose-50/40 p-6 text-center space-y-3">
+                <CheckCircle2 className="h-10 w-10 text-emerald-600 mx-auto" />
+                <h3 className="text-lg font-extrabold text-slate-900">Tirilla de Retiro — Banco de Corazones</h3>
+                <div className="text-xs text-slate-700 space-y-1 font-mono bg-white p-4 rounded-xl border border-rose-100 text-left">
+                  <p>FECHA: {recibo.fecha || new Date().toLocaleString("es-CO")}</p>
+                  <p>CUENTA: {recibo.numero_cuenta}</p>
+                  <p>VALOR RETIRADO: {fmt(Number(recibo.valor_retirado))}</p>
+                  <p>IMPUESTO 4x1000: {fmt(Number(recibo.impuesto_4x1000 || 0))}</p>
+                  <p className="font-bold text-rose-700 pt-1 border-t border-slate-100">
+                    NUEVO SALDO: {fmt(Number(recibo.nuevo_saldo))}
+                  </p>
+                </div>
+                <div className="flex gap-2 justify-center pt-2">
+                  <Button onClick={() => window.print()} variant="outline" className="text-xs">
+                    <Printer className="h-3.5 w-3.5 mr-1.5" /> Imprimir
+                  </Button>
+                  <Button onClick={() => setPantalla("menu")} className="bg-rose-600 hover:bg-rose-700 text-white text-xs">
+                    Otro Servicio
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
