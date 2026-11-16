@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.output/
+dist/
+.vinxi/
+.Nitro/
+*.log
+.DS_Store
