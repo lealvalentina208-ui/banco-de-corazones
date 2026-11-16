@@ -148,7 +148,7 @@ export function CajeroAtmView() {
             </div>
             <div>
               <h1 className="font-bold text-lg leading-tight">Dispensador de Efectivo — Banco de Corazones</h1>
-              <p className="text-xs text-rose-100">Red Cooperativa · Valentina Leal · Sergio Ramos · Dana Manrique</p>
+              <p className="text-xs text-rose-100">Red Nacional de Cajeros Automáticos</p>
             </div>
           </div>
 

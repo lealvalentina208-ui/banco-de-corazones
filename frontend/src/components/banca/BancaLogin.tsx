@@ -150,28 +150,6 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
           <p className="text-sm sm:text-base text-slate-600 max-w-xl leading-relaxed">
             Bienvenido a la sucursal virtual de <strong>Banco de Corazones</strong>. Consulta tu saldo en línea, envía dinero sin filas y genera pines de retiro para nuestra red de cajeros.
           </p>
-
-          {/* TARJETA DE BENEFICIOS E INTEGRANTES (SIN CREDENCIALES EN TEXTO PLANO) */}
-          <div className="rounded-2xl bg-white border border-rose-200 p-5 shadow-sm max-w-xl space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-600">
-              <Users className="h-4 w-4" />
-              <span>Desarrollado por el Equipo</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
-                <span className="block text-xs font-bold text-slate-900">Valentina Leal</span>
-                <span className="block text-[11px] text-rose-600 mt-0.5">Arquitectura & Gestión</span>
-              </div>
-              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
-                <span className="block text-xs font-bold text-slate-900">Sergio Ramos</span>
-                <span className="block text-[11px] text-rose-600 mt-0.5">Motor Transaccional</span>
-              </div>
-              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3">
-                <span className="block text-xs font-bold text-slate-900">Dana Manrique</span>
-                <span className="block text-[11px] text-rose-600 mt-0.5">Experiencia & Seguridad</span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* COLUMNA DERECHA: TARJETA BLANCA DE LOGIN / REGISTRO */}

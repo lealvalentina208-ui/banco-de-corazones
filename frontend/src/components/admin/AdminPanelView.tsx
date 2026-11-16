@@ -195,7 +195,7 @@ export function AdminPanelView() {
             </div>
             <div>
               <h1 className="font-bold text-lg leading-tight">Administración — Banco de Corazones</h1>
-              <p className="text-xs text-rose-100">Valentina Leal · Sergio Ramos · Dana Manrique</p>
+              <p className="text-xs text-rose-100">Consola Central de Operaciones</p>
             </div>
           </div>
 

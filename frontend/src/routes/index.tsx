@@ -23,7 +23,7 @@ function Index() {
         <div className="mx-auto max-w-6xl flex flex-col sm:flex-row items-center justify-between gap-2 text-center sm:text-left">
           <p className="flex items-center justify-center sm:justify-start gap-1.5">
             <Heart className="h-4 w-4 text-rose-600 fill-rose-600" />
-            <span>© 2026 <strong className="text-slate-800">Banco de Corazones</strong> · Desarrollado por Valentina Leal, Sergio Ramos y Dana Manrique</span>
+            <span>© 2026 <strong className="text-slate-800">Banco de Corazones</strong> · Todos los derechos reservados</span>
           </p>
           <div className="flex items-center gap-4 text-xs font-medium">
             <a href="/cajero" className="text-rose-600 hover:underline flex items-center gap-1">

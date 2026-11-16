@@ -71,7 +71,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
           </div>
           <h2 className="text-xl font-bold">Dirección General</h2>
           <p className="text-xs text-rose-100 mt-0.5">
-            Valentina Leal · Sergio Ramos · Dana Manrique
+            Gestión de Cuentas, Caja y Auditoría
           </p>
         </div>
 
