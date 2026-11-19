@@ -5,6 +5,7 @@ import {
   LogOut, KeyRound, Printer, Wallet, ListOrdered
 } from "lucide-react";
 import { toast } from "sonner";
+import { consumeCajeroHandoff, securePost } from "@/lib/secureFetch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -26,15 +27,14 @@ export function CajeroAtmView() {
   useEffect(() => {
     checkSesion();
     if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const cParam = params.get("cuenta");
-      const codParam = params.get("codigo");
-      if (cParam && cParam !== "null" && cParam !== "undefined") {
-        setCuentaNumero(cParam.trim());
+      const handoff = consumeCajeroHandoff();
+      if (handoff) {
+        setCuentaNumero(handoff.cuenta);
+        setPin(handoff.codigo);
+        toast.success("PIN de retiro cargado con éxito en el cajero.");
       }
-      if (codParam && codParam !== "null" && codParam !== "undefined" && /^\d{4,6}$/.test(codParam.trim())) {
-        setPin(codParam.trim());
-        toast.info("Pin de retiro cargado automáticamente.");
+      if (window.location.search) {
+        window.history.replaceState({}, "", window.location.pathname);
       }
     }
   }, []);
@@ -61,23 +61,23 @@ export function CajeroAtmView() {
 
     try {
       setLoading(true);
-      const res = await fetch("/api/auth/login-cajero", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numero_cuenta: cuentaNumero.trim(), pin: pin.trim() }),
-        credentials: "include",
+      const res = await securePost("/api/auth/login-cajero", {
+        numero_cuenta: cuentaNumero.trim(),
+        pin: pin.trim(),
       });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || "Credenciales inválidas en cajero.");
         return;
       }
-      toast.success("Bienvenido al Dispensador de Banco de Corazones.");
+      toast.success("Acceso ATM autorizado con éxito", {
+        description: "Bienvenido al Dispensador de Banco de Corazones.",
+      });
       setCuentaInfo(data.cuenta);
       setAutenticado(true);
       setPantalla("menu");
-    } catch (err) {
-      toast.error("Error de comunicación con el dispensador.");
+    } catch (err: any) {
+      toast.error(err?.message || "Error de comunicación segura con el dispensador.");
     } finally {
       setLoading(false);
     }
@@ -88,25 +88,30 @@ export function CajeroAtmView() {
       toast.error("El monto debe ser múltiplo de $10.000 COP.");
       return;
     }
+    const codigoTrim = pin.trim();
+    if (!codigoTrim || (codigoTrim.length !== 4 && codigoTrim.length !== 6)) {
+      toast.error("Ingresa tu PIN de 4 dígitos o código OTP de 6 dígitos para confirmar el retiro.");
+      return;
+    }
     try {
       setLoading(true);
-      const res = await fetch("/api/cajero/retirar", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ valor, codigoOtp: pin.trim() || "1234" }),
-        credentials: "include",
+      const res = await securePost("/api/cajero/retirar", {
+        valor,
+        codigoOtp: codigoTrim,
       });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || "No se pudo realizar el retiro.");
         return;
       }
-      toast.success(data.mensaje || "Efectivo dispensado.");
+      toast.success("Retiro exitoso", {
+        description: data.mensaje || `Efectivo dispensado por ${fmt(valor)}.`,
+      });
       setRecibo(data.recibo);
       setCuentaInfo((prev: any) => ({ ...prev, saldo: data.recibo.nuevo_saldo }));
       setPantalla("recibo");
-    } catch (err) {
-      toast.error("Error al dispensar dinero.");
+    } catch (err: any) {
+      toast.error(err?.message || "Error de comunicación segura al dispensar dinero.");
     } finally {
       setLoading(false);
     }
@@ -120,6 +125,7 @@ export function CajeroAtmView() {
         const data = await res.json();
         setMovimientos(data.movimientos || []);
         setPantalla("movimientos");
+        toast.success("Movimientos consultados con éxito.");
       }
     } catch (err) {
       toast.error("Error al consultar movimientos.");
@@ -132,9 +138,10 @@ export function CajeroAtmView() {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     setAutenticado(false);
     setCuentaInfo(null);
+    setPin("");
     setPantalla("menu");
     setRecibo(null);
-    toast.info("Sesión de cajero finalizada.");
+    toast.success("Sesión de cajero finalizada con éxito.");
   };
 
   return (
@@ -317,7 +324,10 @@ export function CajeroAtmView() {
 
                 <button
                   type="button"
-                  onClick={() => setPantalla("saldo")}
+                  onClick={() => {
+                    setPantalla("saldo");
+                    toast.success("Saldo disponible consultado con éxito.");
+                  }}
                   className="rounded-2xl border-2 border-slate-200 bg-slate-50 hover:bg-slate-100 p-6 text-left transition-all"
                 >
                   <CreditCard className="h-7 w-7 text-rose-600 mb-2" />
@@ -349,7 +359,20 @@ export function CajeroAtmView() {
 
             {pantalla === "retirar" && (
               <div className="space-y-5">
-                <h3 className="text-base font-bold text-slate-900">Selecciona el Monto a Retirar:</h3>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <h3 className="text-base font-bold text-slate-900">Selecciona el Monto a Retirar:</h3>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs font-semibold text-slate-600 whitespace-nowrap">PIN / OTP:</Label>
+                    <Input
+                      type="password"
+                      maxLength={6}
+                      value={pin}
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                      placeholder="PIN / Código"
+                      className="h-9 w-32 bg-slate-50 border-slate-300 font-mono text-center text-slate-900"
+                    />
+                  </div>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {[20000, 50000, 100000, 150000, 250000, 400000].map((m) => (
                     <button

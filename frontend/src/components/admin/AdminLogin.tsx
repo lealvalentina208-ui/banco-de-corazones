@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { securePost } from "@/lib/secureFetch";
 
 interface AdminLoginProps {
   onLoginSuccess?: () => void;
@@ -26,11 +27,9 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
     try {
       setLoading(true);
-      const res = await fetch("/api/auth/login-admin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ correo: adminCorreo.trim(), password: adminPassword }),
-        credentials: "include",
+      const res = await securePost("/api/auth/login-admin", {
+        correo: adminCorreo.trim(),
+        password: adminPassword,
       });
 
       const data = await res.json();
@@ -39,10 +38,12 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
         return;
       }
 
-      toast.success("Bienvenido al Panel Administrativo — Banco de Corazones.");
+      toast.success("Acceso administrativo concedido", {
+        description: "Bienvenido al Panel Administrativo — Banco de Corazones.",
+      });
       if (onLoginSuccess) onLoginSuccess();
-    } catch (err) {
-      toast.error("Error de conexión.");
+    } catch (err: any) {
+      toast.error(err?.message || "Error de conexión segura.");
     } finally {
       setLoading(false);
     }
@@ -82,7 +83,7 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
               type="email"
               value={adminCorreo}
               onChange={(e) => setAdminCorreo(e.target.value)}
-              placeholder="admin@banco.com"
+              placeholder="admin@entidad.com"
               required
               className="mt-1.5 h-11 font-mono text-xs bg-slate-50 border-slate-300 text-slate-900"
             />

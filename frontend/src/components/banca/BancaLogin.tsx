@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { isStrongPassword, securePost } from "@/lib/secureFetch";
 
 interface BancaLoginProps {
   onLogin: (identificador: string, password: string) => Promise<void>;
@@ -28,7 +29,6 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
     correo: "",
     telefono: "",
     tipo_cuenta_id: 1,
-    saldo_inicial: "",
     password: "",
     password_confirm: "",
     pin_cajero: "",
@@ -51,8 +51,8 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
       toast.error("Complete todos los campos obligatorios.");
       return;
     }
-    if (regData.password.length < 6) {
-      toast.error("La contraseña debe tener mínimo 6 caracteres.");
+    if (!isStrongPassword(regData.password)) {
+      toast.error("La contraseña debe tener mínimo 8 caracteres, mayúscula, minúscula y un número.");
       return;
     }
     if (regData.password !== regData.password_confirm) {
@@ -67,21 +67,16 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
 
     try {
       setRegLoading(true);
-      const res = await fetch("/api/auth/registro-cliente", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipo_documento_id: regData.tipo_documento_id,
-          numero_documento: regData.numero_documento.trim(),
-          nombres: regData.nombres.trim(),
-          apellidos: regData.apellidos.trim(),
-          correo: regData.correo.trim(),
-          telefono: regData.telefono.trim(),
-          tipo_cuenta_id: regData.tipo_cuenta_id,
-          saldo_inicial: parseFloat(regData.saldo_inicial) || 0,
-          password: regData.password,
-          pin_cajero: pin,
-        }),
+      const res = await securePost("/api/auth/registro-cliente", {
+        tipo_documento_id: regData.tipo_documento_id,
+        numero_documento: regData.numero_documento.trim(),
+        nombres: regData.nombres.trim(),
+        apellidos: regData.apellidos.trim(),
+        correo: regData.correo.trim(),
+        telefono: regData.telefono.trim(),
+        tipo_cuenta_id: regData.tipo_cuenta_id,
+        password: regData.password,
+        pin_cajero: pin,
       });
 
       const data = await res.json();
@@ -90,13 +85,15 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
         return;
       }
 
-      toast.success(data.mensaje);
+      toast.success("¡Cuenta creada con éxito!", {
+        description: data.mensaje || "Apertura realizada con saldo inicial $0 COP.",
+      });
       setCuentaCreada(data.cuenta);
       setIdentificador(regData.numero_documento.trim());
       setPassword(regData.password);
       setTab("login");
-    } catch (err) {
-      toast.error("Error de conexión.");
+    } catch (err: any) {
+      toast.error(err?.message || "Error de conexión segura.");
     } finally {
       setRegLoading(false);
     }
@@ -342,32 +339,32 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-[11px] font-semibold text-slate-700">Saldo Inicial</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        value={regData.saldo_inicial}
-                        onChange={(e) => setRegData({ ...regData, saldo_inicial: e.target.value })}
-                        placeholder="500000"
-                        className="mt-1 h-9 bg-slate-50 border-slate-300 text-slate-900 text-xs font-mono"
-                      />
+                      <Label className="text-[11px] font-semibold text-slate-700">Saldo de Apertura</Label>
+                      <div className="mt-1 flex h-9 items-center justify-between rounded-lg border border-emerald-300 bg-emerald-50 px-2.5 text-xs">
+                        <span className="font-mono font-bold text-emerald-700">$0 COP</span>
+                        <span className="text-[10px] font-medium text-emerald-600">Política fija</span>
+                      </div>
                     </div>
                   </div>
 
+                  <p className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[10px] text-rose-700 font-medium">
+                    Toda cuenta nueva abre con saldo $0 COP. Clave fuerte: 8+ caracteres, mayúscula, minúscula y número.
+                  </p>
+
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <Label className="text-[11px] font-semibold text-slate-700">Clave</Label>
+                      <Label className="text-[11px] font-semibold text-slate-700">Clave *</Label>
                       <Input
                         type="password"
                         value={regData.password}
                         onChange={(e) => setRegData({ ...regData, password: e.target.value })}
-                        placeholder="Mín. 6"
+                        placeholder="Mín. 8 segura"
                         required
                         className="mt-1 h-9 bg-slate-50 border-slate-300 text-slate-900 text-xs font-mono"
                       />
                     </div>
                     <div>
-                      <Label className="text-[11px] font-semibold text-slate-700">Repetir</Label>
+                      <Label className="text-[11px] font-semibold text-slate-700">Repetir *</Label>
                       <Input
                         type="password"
                         value={regData.password_confirm}
@@ -378,15 +375,15 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
                       />
                     </div>
                     <div>
-                      <Label className="text-[11px] font-semibold text-slate-700">PIN (4)</Label>
+                      <Label className="text-[11px] font-semibold text-slate-700">PIN (4) *</Label>
                       <Input
                         type="password"
                         maxLength={4}
                         value={regData.pin_cajero}
                         onChange={(e) => setRegData({ ...regData, pin_cajero: e.target.value.replace(/\D/g, "") })}
-                        placeholder="1234"
+                        placeholder="••••"
                         required
-                        className="mt-1 h-9 bg-slate-50 border-slate-300 text-slate-900 text-xs font-mono text-center"
+                        className="mt-1 h-9 bg-slate-50 border-slate-300 text-slate-900 text-xs font-mono text-center tracking-widest"
                       />
                     </div>
                   </div>

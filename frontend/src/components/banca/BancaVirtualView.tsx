@@ -1,15 +1,23 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { isStrongPassword, saveCajeroHandoff, securePost } from "@/lib/secureFetch";
 import { Cuenta, Movimiento, Usuario } from "./types";
 import { BancaLogin } from "./BancaLogin";
 import {
   Heart, Wallet, ArrowLeftRight, CreditCard, KeyRound,
   LogOut, Copy, Check, RefreshCw, ShieldCheck, ArrowUpRight,
-  ArrowDownLeft, Search, CheckCircle2, User
+  ArrowDownLeft, Search, CheckCircle2, User, Bell, Lock, Eye, EyeOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+interface NotificacionBanco {
+  id: string;
+  title: string;
+  detail: string;
+  time: string;
+}
 
 const fmt = (n: number) =>
   new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
@@ -21,8 +29,48 @@ export function BancaVirtualView() {
   const [cuentaActiva, setCuentaActiva] = useState<Cuenta | null>(null);
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"resumen" | "transferir" | "pin" | "extracto">("resumen");
+  const [activeTab, setActiveTab] = useState<"resumen" | "transferir" | "pin" | "extracto" | "seguridad">("resumen");
   const [loginLoading, setLoginLoading] = useState(false);
+
+  // Notificaciones de sesión
+  const [notificaciones, setNotificaciones] = useState<NotificacionBanco[]>([]);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Seguridad y Cambio de Contraseña Autenticado
+  const [telefonoEdit, setTelefonoEdit] = useState("");
+  const [loadingTel, setLoadingTel] = useState(false);
+  const [passActual, setPassActual] = useState("");
+  const [pinSeguridad, setPinSeguridad] = useState("");
+  const [passNueva, setPassNueva] = useState("");
+  const [passConfirm, setPassConfirm] = useState("");
+  const [showPassActual, setShowPassActual] = useState(false);
+  const [showPinSeguridad, setShowPinSeguridad] = useState(false);
+  const [showPassNueva, setShowPassNueva] = useState(false);
+  const [loadingPass, setLoadingPass] = useState(false);
+  const [passUpdatedMsg, setPassUpdatedMsg] = useState<string | null>(null);
+
+  const agregarNotificacion = (title: string, detail: string) => {
+    const item: NotificacionBanco = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title,
+      detail,
+      time: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+    };
+    setNotificaciones((prev) => [item, ...prev].slice(0, 20));
+    setUnreadNotifs((prev) => prev + 1);
+  };
+
+  useEffect(() => {
+    const onClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setNotifOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
 
   // Estado de Transferencia
   const [cuentaDestino, setCuentaDestino] = useState("");
@@ -48,6 +96,7 @@ export function BancaVirtualView() {
       const data = await res.json();
       if (data.usuario) {
         setUsuario(data.usuario);
+        setTelefonoEdit(data.usuario.telefono || "");
         setCuentas(data.cuentas || []);
         if (data.cuentas && data.cuentas.length > 0) {
           const cuentaActual = data.cuentas[0];
@@ -81,21 +130,25 @@ export function BancaVirtualView() {
   const handleLogin = async (identificador: string, pass: string) => {
     try {
       setLoginLoading(true);
-      const res = await fetch("/api/auth/login-cliente", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identificador, password: pass }),
-        credentials: "include",
+      const res = await securePost("/api/auth/login-cliente", {
+        identificador,
+        password: pass,
       });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || "Credenciales incorrectas.");
         return;
       }
-      toast.success(`Hola de nuevo, ${data.usuario.nombres}`);
+      toast.success("Inicio de sesión exitoso", {
+        description: `Hola de nuevo, ${data.usuario.nombres}.`,
+      });
+      agregarNotificacion(
+        "Sesión iniciada",
+        `Ingreso autorizado para ${data.usuario.nombres} ${data.usuario.apellidos}.`
+      );
       cargarResumen();
-    } catch (err) {
-      toast.error("Error al iniciar sesión.");
+    } catch (err: any) {
+      toast.error(err?.message || "Error al iniciar sesión de forma segura.");
     } finally {
       setLoginLoading(false);
     }
@@ -108,8 +161,13 @@ export function BancaVirtualView() {
       setCuentas([]);
       setCuentaActiva(null);
       setMovimientos([]);
+      setNotificaciones([]);
+      setUnreadNotifs(0);
+      setNotifOpen(false);
       setActiveTab("resumen");
-      toast.info("Has salido de tu sucursal virtual.");
+      toast.success("Sesión cerrada con éxito", {
+        description: "Has salido de tu sucursal virtual.",
+      });
     } catch (err) {
       console.error(err);
     }
@@ -125,36 +183,128 @@ export function BancaVirtualView() {
 
     try {
       setEnviando(true);
-      const res = await fetch("/api/banca/transferir", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cuenta_origen_id: cuentaActiva?.id,
-          numero_cuenta_destino: cuentaDestino.trim(),
-          valor: valorNum,
-          descripcion: conceptoTransferir.trim() || "Envío Banco de Corazones",
-        }),
-        credentials: "include",
+      const res = await securePost("/api/banca/transferir", {
+        cuenta_origen_id: cuentaActiva?.id,
+        numero_cuenta_destino: cuentaDestino.trim(),
+        valor: valorNum,
+        concepto: conceptoTransferir.trim() || "Envío Banco de Corazones",
       });
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || "No se pudo realizar la transferencia.");
         return;
       }
-      toast.success("¡Transferencia enviada con éxito!");
-      setReciboTransferencia(data.comprobante || {
-        destino: cuentaDestino,
-        valor: valorNum,
-        impuesto: Math.round(valorNum * 0.004),
-        fecha: new Date().toLocaleString("es-CO"),
+      const detalle = `Enviaste ${fmt(valorNum)} a la cuenta ${cuentaDestino.trim()}${
+        data.comprobante?.titular_destino ? ` (${data.comprobante.titular_destino})` : ""
+      }.`;
+      toast.success("Transferencia exitosa", {
+        description: detalle,
       });
+      agregarNotificacion("Transferencia exitosa", detalle);
+      setReciboTransferencia(
+        data.comprobante || {
+          cuenta_destino: cuentaDestino.trim(),
+          valor: valorNum,
+          impuesto: Math.round(valorNum * 0.004),
+          fecha: new Date().toLocaleString("es-CO"),
+        }
+      );
       setMontoTransferir("");
       setConceptoTransferir("");
       cargarResumen();
-    } catch (err) {
-      toast.error("Error de red al transferir.");
+    } catch (err: any) {
+      toast.error(err?.message || "Error de comunicación segura al transferir.");
     } finally {
       setEnviando(false);
+    }
+  };
+
+  const handleUpdateTelefono = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!telefonoEdit.trim()) {
+      toast.error("Ingresa un número de teléfono válido.");
+      return;
+    }
+    try {
+      setLoadingTel(true);
+      const res = await fetch("/api/banca/perfil", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ telefono: telefonoEdit.trim() }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "No se pudo actualizar el teléfono.");
+        return;
+      }
+      if (usuario) setUsuario({ ...usuario, telefono: telefonoEdit.trim() });
+      toast.success("Teléfono actualizado con éxito", {
+        description: `Nuevo número registrado: ${telefonoEdit.trim()}.`,
+      });
+      agregarNotificacion("Contacto actualizado", `Teléfono actualizado a ${telefonoEdit.trim()}.`);
+    } catch {
+      toast.error("Error de comunicación con el servidor.");
+    } finally {
+      setLoadingTel(false);
+    }
+  };
+
+  const handleCambiarPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPassUpdatedMsg(null);
+    if (!passActual) {
+      toast.error("Ingresa tu contraseña actual.");
+      return;
+    }
+    if (!/^\d{4}$/.test(pinSeguridad.trim())) {
+      toast.error("Para autenticar el cambio debes ingresar tu PIN de 4 dígitos.");
+      return;
+    }
+    if (!isStrongPassword(passNueva)) {
+      toast.error("La nueva contraseña debe tener mínimo 8 caracteres, mayúscula, minúscula y número.");
+      return;
+    }
+    if (passNueva === passActual) {
+      toast.error("La nueva contraseña debe ser diferente a la actual.");
+      return;
+    }
+    if (passNueva !== passConfirm) {
+      toast.error("La confirmación de la nueva contraseña no coincide.");
+      return;
+    }
+
+    try {
+      setLoadingPass(true);
+      const res = await securePost("/api/banca/password", {
+        password_actual: passActual,
+        password_nuevo: passNueva,
+        password_confirmacion: passConfirm,
+        pin_cajero: pinSeguridad.trim(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "No se pudo cambiar la contraseña.");
+        return;
+      }
+      setPassActual("");
+      setPinSeguridad("");
+      setPassNueva("");
+      setPassConfirm("");
+      setPassUpdatedMsg(
+        "Contraseña actualizada con verificación de clave actual + PIN de 4 dígitos y sesión rotada."
+      );
+      toast.success("¡Contraseña actualizada con éxito!", {
+        description: "Tus credenciales cifradas fueron renovadas de forma segura.",
+      });
+      agregarNotificacion(
+        "Contraseña actualizada",
+        "Cambio autenticado con clave actual + PIN ATM de 4 dígitos."
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Error de conexión segura al cambiar la clave.");
+    } finally {
+      setLoadingPass(false);
     }
   };
 
@@ -173,7 +323,13 @@ export function BancaVirtualView() {
       const data = await res.json();
       if (res.ok && data.codigo) {
         setCodigoRetiro(data.codigo);
-        toast.success("Pin de retiro generado por 30 minutos.");
+        toast.success("PIN de retiro generado con éxito", {
+          description: `Tu código temporal es ${data.codigo} (vigente 15 minutos).`,
+        });
+        agregarNotificacion(
+          "PIN de retiro generado",
+          `Código ${data.codigo} listo para retiro sin tarjeta en cajero.`
+        );
       } else {
         toast.error(data.error || "No se pudo generar el pin.");
       }
@@ -236,6 +392,71 @@ export function BancaVirtualView() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                cargarResumen();
+                toast.success("Saldos y movimientos actualizados.");
+              }}
+              title="Actualizar saldo"
+              className="inline-flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 p-1.5 text-white transition-colors"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                aria-label="Notificaciones"
+                onClick={() => {
+                  const next = !notifOpen;
+                  setNotifOpen(next);
+                  if (next) setUnreadNotifs(0);
+                }}
+                className="relative inline-flex items-center justify-center rounded-lg bg-white/15 hover:bg-white/25 p-1.5 text-white transition-colors"
+              >
+                <Bell className="h-3.5 w-3.5" />
+                {unreadNotifs > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-400 px-1 text-[9px] font-bold text-slate-950">
+                    {unreadNotifs > 9 ? "9+" : unreadNotifs}
+                  </span>
+                )}
+              </button>
+
+              {notifOpen && (
+                <div className="absolute right-0 top-10 z-50 w-72 sm:w-80 rounded-2xl border border-rose-200 bg-white p-3 text-slate-800 shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-2">
+                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                      <Bell className="h-3.5 w-3.5 text-rose-600" /> Notificaciones de Sesión
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-500">
+                      {notificaciones.length} eventos
+                    </span>
+                  </div>
+                  {notificaciones.length === 0 ? (
+                    <p className="py-4 text-center text-xs text-slate-500">
+                      Aún no hay notificaciones registradas.
+                    </p>
+                  ) : (
+                    <ul className="max-h-60 space-y-2 overflow-y-auto pr-1">
+                      {notificaciones.map((n) => (
+                        <li key={n.id} className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-2.5 text-xs">
+                          <div className="flex items-start gap-2">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-slate-900 leading-tight">{n.title}</p>
+                              <p className="text-[11px] text-slate-600 mt-0.5">{n.detail}</p>
+                              <p className="text-[10px] font-mono text-slate-400 mt-1">{n.time}</p>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+
             <a
               href="/cajero"
               className="inline-flex items-center gap-1.5 rounded-lg bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
@@ -266,6 +487,7 @@ export function BancaVirtualView() {
               { id: "transferir", label: "Enviar Dinero", icon: ArrowLeftRight },
               { id: "pin", label: "Pin de Retiro Cajero", icon: KeyRound },
               { id: "extracto", label: "Historial de Movimientos", icon: Search },
+              { id: "seguridad", label: "Seguridad y Clave", icon: Lock },
             ].map((t) => {
               const Icon = t.icon;
               const active = activeTab === t.id;
@@ -463,13 +685,26 @@ export function BancaVirtualView() {
             </div>
 
             {reciboTransferencia && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900 space-y-1">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900 space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold text-emerald-700">
-                  <CheckCircle2 className="h-4 w-4" /> Comprobante de Envío Exitoso
+                  <CheckCircle2 className="h-4 w-4" /> Comprobante de Transferencia Exitosa
                 </div>
-                <p>Cuenta destino: <strong className="font-mono">{reciboTransferencia.destino}</strong></p>
-                <p>Monto enviado: <strong>{fmt(reciboTransferencia.valor)}</strong></p>
-                <p>Impuesto 4x1000: <strong>{fmt(reciboTransferencia.impuesto)}</strong></p>
+                {reciboTransferencia.numero_operacion && (
+                  <p>Operación: <strong className="font-mono">#{reciboTransferencia.numero_operacion}</strong></p>
+                )}
+                <p>
+                  Cuenta destino:{" "}
+                  <strong className="font-mono">
+                    {reciboTransferencia.cuenta_destino || reciboTransferencia.destino}
+                  </strong>
+                </p>
+                {reciboTransferencia.titular_destino && (
+                  <p>Destinatario: <strong>{reciboTransferencia.titular_destino}</strong></p>
+                )}
+                <p>Monto enviado: <strong>{fmt(Number(reciboTransferencia.valor) || 0)}</strong></p>
+                {reciboTransferencia.nuevo_saldo !== undefined && (
+                  <p>Nuevo saldo disponible: <strong className="text-emerald-700">{fmt(Number(reciboTransferencia.nuevo_saldo))}</strong></p>
+                )}
               </div>
             )}
 
@@ -570,10 +805,9 @@ export function BancaVirtualView() {
                 type="button"
                 disabled={!codigoRetiro}
                 onClick={() => {
-                  if (!codigoRetiro) return;
-                  window.location.href = `/cajero?cuenta=${encodeURIComponent(
-                    cuentaActiva?.numero_cuenta || ""
-                  )}&codigo=${encodeURIComponent(codigoRetiro)}`;
+                  if (!codigoRetiro || !cuentaActiva?.numero_cuenta) return;
+                  saveCajeroHandoff(cuentaActiva.numero_cuenta, codigoRetiro);
+                  window.location.href = "/cajero";
                 }}
                 className="flex-1 h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs"
               >
@@ -651,6 +885,179 @@ export function BancaVirtualView() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* PESTAÑA 5: SEGURIDAD Y CAMBIO DE CONTRASEÑA AUTENTICADO       */}
+        {/* ============================================================ */}
+        {activeTab === "seguridad" && (
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* DATOS DEL TITULAR Y TELÉFONO */}
+            <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+                <User className="h-5 w-5 text-rose-600" />
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Perfil del Titular</h2>
+                  <p className="text-xs text-slate-500">Información verificada de tu sucursal virtual.</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-2 text-xs">
+                <div className="flex justify-between border-b border-slate-200/70 pb-2">
+                  <span className="text-slate-500">Titular:</span>
+                  <strong className="text-slate-900">{usuario.nombres} {usuario.apellidos}</strong>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/70 pb-2">
+                  <span className="text-slate-500">Documento:</span>
+                  <strong className="font-mono text-slate-900">{usuario.numero_documento}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Correo:</span>
+                  <strong className="font-mono text-slate-900">{usuario.correo}</strong>
+                </div>
+              </div>
+
+              <form onSubmit={handleUpdateTelefono} className="space-y-3 pt-1">
+                <Label className="text-xs font-semibold text-slate-700">Celular de Notificaciones</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={telefonoEdit}
+                    onChange={(e) => setTelefonoEdit(e.target.value)}
+                    placeholder="3101234567"
+                    required
+                    className="h-10 bg-slate-50 border-slate-300 font-mono text-sm text-slate-900"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={loadingTel}
+                    className="h-10 px-4 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold"
+                  >
+                    {loadingTel ? <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                    Actualizar
+                  </Button>
+                </div>
+              </form>
+            </div>
+
+            {/* CAMBIO DE CONTRASEÑA CON DOBLE AUTENTICACIÓN */}
+            <div className="rounded-2xl bg-white border border-slate-200 p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-rose-600" />
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Cambio de Contraseña</h2>
+                    <p className="text-xs text-slate-500">Requiere clave actual + PIN de 4 dígitos.</p>
+                  </div>
+                </div>
+                <span className="rounded-full bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                  Cifrado E2E
+                </span>
+              </div>
+
+              {passUpdatedMsg && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800 flex items-start gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>{passUpdatedMsg}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleCambiarPassword} className="space-y-3">
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700">1. Contraseña Actual</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      type={showPassActual ? "text" : "password"}
+                      value={passActual}
+                      onChange={(e) => {
+                        setPassActual(e.target.value);
+                        setPassUpdatedMsg(null);
+                      }}
+                      placeholder="Tu contraseña actual"
+                      required
+                      className="h-10 bg-slate-50 border-slate-300 font-mono text-sm text-slate-900 pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassActual(!showPassActual)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700"
+                    >
+                      {showPassActual ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700">2. PIN de Seguridad de la Cuenta (4 dígitos)</Label>
+                  <div className="relative mt-1">
+                    <Input
+                      type={showPinSeguridad ? "text" : "password"}
+                      inputMode="numeric"
+                      maxLength={4}
+                      value={pinSeguridad}
+                      onChange={(e) => setPinSeguridad(e.target.value.replace(/\D/g, ""))}
+                      placeholder="••••"
+                      required
+                      className="h-10 bg-slate-50 border-slate-300 font-mono text-sm tracking-[0.4em] text-slate-900 pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPinSeguridad(!showPinSeguridad)}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700"
+                    >
+                      {showPinSeguridad ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs font-semibold text-slate-700">3. Nueva Contraseña</Label>
+                    <div className="relative mt-1">
+                      <Input
+                        type={showPassNueva ? "text" : "password"}
+                        value={passNueva}
+                        onChange={(e) => setPassNueva(e.target.value)}
+                        placeholder="Mín. 8 segura"
+                        required
+                        className="h-10 bg-slate-50 border-slate-300 font-mono text-sm text-slate-900 pr-9"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassNueva(!showPassNueva)}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-700"
+                      >
+                        {showPassNueva ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-semibold text-slate-700">4. Confirmar Clave</Label>
+                    <Input
+                      type={showPassNueva ? "text" : "password"}
+                      value={passConfirm}
+                      onChange={(e) => setPassConfirm(e.target.value)}
+                      placeholder="Repetir nueva clave"
+                      required
+                      className="mt-1 h-10 bg-slate-50 border-slate-300 font-mono text-sm text-slate-900"
+                    />
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500">
+                  Mínimo 8 caracteres, incluyendo mayúscula, minúscula y número. Al guardar se rota tu sesión bancaria.
+                </p>
+
+                <Button
+                  type="submit"
+                  disabled={loadingPass || !passActual || !passNueva || !passConfirm || pinSeguridad.length !== 4}
+                  className="w-full h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs"
+                >
+                  {loadingPass ? <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                  Autorizar y Cambiar Contraseña
+                </Button>
+              </form>
+            </div>
           </div>
         )}
       </main>

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { isStrongPassword, securePost } from "@/lib/secureFetch";
 import { AdminLogin } from "./AdminLogin";
 import {
   Users, Wallet, History, UserPlus, Heart, ShieldAlert,
@@ -35,6 +36,7 @@ export function AdminPanelView() {
   const [cuentaConsignar, setCuentaConsignar] = useState("");
   const [valorConsignar, setValorConsignar] = useState("");
   const [conceptoConsignar, setConceptoConsignar] = useState("");
+  const [reciboConsignar, setReciboConsignar] = useState<any>(null);
 
   // Formulario Crear Asociado
   const [nuevo, setNuevo] = useState({
@@ -110,63 +112,85 @@ export function AdminPanelView() {
 
   const handleConsignarSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/admin/consignar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    const valorNum = parseFloat(valorConsignar);
+    if (!cuentaConsignar.trim() || isNaN(valorNum) || valorNum <= 0) {
+      toast.error("Verifica la cuenta destino y el monto a consignar.");
+      return;
+    }
+
+    try {
+      const res = await securePost("/api/admin/consignar", {
         numero_cuenta: cuentaConsignar.trim(),
-        valor: parseFloat(valorConsignar),
+        valor: valorNum,
         concepto: conceptoConsignar.trim() || "Consignación en Caja — Banco de Corazones",
-      }),
-      credentials: "include",
-    });
-    const data = await res.json();
-    if (res.ok) {
-      toast.success("Consignación acreditada exitosamente.");
-      setValorConsignar("");
-      setConceptoConsignar("");
-      checkAdminSession();
-      setActiveTab("clientes");
-    } else {
-      toast.error(data.error || "Error al consignar.");
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Consignación exitosa", {
+          description: `Depósito de ${fmt(valorNum)} acreditado en cuenta ${cuentaConsignar.trim()}.`,
+        });
+        setReciboConsignar(data.recibo || null);
+        setValorConsignar("");
+        setConceptoConsignar("");
+        checkAdminSession();
+      } else {
+        toast.error(data.error || "Error al consignar.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Error de conexión segura en ventanilla.");
     }
   };
 
   const handleCrearSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const res = await fetch("/api/admin/clientes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    if (!isStrongPassword(nuevo.password)) {
+      toast.error("La clave web debe tener mínimo 8 caracteres, mayúscula, minúscula y número.");
+      return;
+    }
+    if (!/^\d{4}$/.test(nuevo.pin_cajero.trim())) {
+      toast.error("El PIN de cajero debe ser obligatorio y de 4 dígitos numéricos.");
+      return;
+    }
+
+    try {
+      const res = await securePost("/api/admin/clientes", {
         tipo_documento_id: 1,
         ...nuevo,
+        pin_cajero: nuevo.pin_cajero.trim(),
         saldo_inicial: parseFloat(nuevo.saldo_inicial) || 0,
-      }),
-      credentials: "include",
-    });
-    const data = await res.json();
-    if (res.ok) {
-      toast.success("Nuevo asociado creado con éxito.");
-      setNuevo({
-        numero_documento: "",
-        nombres: "",
-        apellidos: "",
-        correo: "",
-        telefono: "",
-        saldo_inicial: "",
-        password: "",
-        pin_cajero: "",
       });
-      checkAdminSession();
-      setActiveTab("clientes");
-    } else {
-      toast.error(data.error || "No se pudo crear el asociado.");
+      const data = await res.json();
+      if (res.ok) {
+        toast.success("Asociado creado con éxito", {
+          description: data.cliente?.numero_cuenta
+            ? `Cuenta asignada: ${data.cliente.numero_cuenta}`
+            : undefined,
+        });
+        setNuevo({
+          numero_documento: "",
+          nombres: "",
+          apellidos: "",
+          correo: "",
+          telefono: "",
+          saldo_inicial: "",
+          password: "",
+          pin_cajero: "",
+        });
+        checkAdminSession();
+        setActiveTab("clientes");
+      } else {
+        toast.error(data.error || "No se pudo crear el asociado.");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Error de conexión segura al crear asociado.");
     }
   };
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
     setAutenticado(false);
+    setReciboConsignar(null);
+    toast.success("Sesión administrativa cerrada con éxito.");
   };
 
   if (!autenticado) {
@@ -396,6 +420,27 @@ export function AdminPanelView() {
                 Acreditar Consignación
               </Button>
             </form>
+
+            {reciboConsignar && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-900 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-emerald-700 flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4" /> Comprobante de Ventanilla Exitoso
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("clientes")}
+                    className="text-[11px] font-bold text-rose-700 hover:underline"
+                  >
+                    Ver Asociados →
+                  </button>
+                </div>
+                <p>Cuenta: <strong className="font-mono">{reciboConsignar.cuenta || reciboConsignar.numero_cuenta}</strong></p>
+                {reciboConsignar.titular && <p>Titular: <strong>{reciboConsignar.titular}</strong></p>}
+                <p>Valor acreditado: <strong>{fmt(Number(reciboConsignar.valor || reciboConsignar.valor_consignado) || 0)}</strong></p>
+                <p>Nuevo saldo: <strong className="text-emerald-700">{fmt(Number(reciboConsignar.nuevo_saldo) || 0)}</strong></p>
+              </div>
+            )}
           </div>
         )}
 
@@ -447,29 +492,38 @@ export function AdminPanelView() {
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Saldo Inicial</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Depósito Inicial</Label>
                   <Input
                     type="number"
+                    min="0"
+                    placeholder="0"
                     value={nuevo.saldo_inicial}
                     onChange={(e) => setNuevo({ ...nuevo, saldo_inicial: e.target.value })}
                     className="mt-1 bg-slate-50 border-slate-300 font-mono text-slate-900"
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">Clave Web</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Clave Web *</Label>
                   <Input
+                    type="password"
+                    required
+                    minLength={8}
+                    placeholder="Mín. 8 segura"
                     value={nuevo.password}
                     onChange={(e) => setNuevo({ ...nuevo, password: e.target.value })}
                     className="mt-1 bg-slate-50 border-slate-300 font-mono text-slate-900"
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-semibold text-slate-700">PIN Cajero</Label>
+                  <Label className="text-xs font-semibold text-slate-700">PIN Cajero *</Label>
                   <Input
+                    type="password"
+                    required
                     maxLength={4}
+                    placeholder="••••"
                     value={nuevo.pin_cajero}
-                    onChange={(e) => setNuevo({ ...nuevo, pin_cajero: e.target.value })}
-                    className="mt-1 bg-slate-50 border-slate-300 font-mono text-slate-900"
+                    onChange={(e) => setNuevo({ ...nuevo, pin_cajero: e.target.value.replace(/\D/g, "") })}
+                    className="mt-1 bg-slate-50 border-slate-300 font-mono text-slate-900 text-center"
                   />
                 </div>
               </div>
