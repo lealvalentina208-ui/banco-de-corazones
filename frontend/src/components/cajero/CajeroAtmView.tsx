@@ -5,12 +5,14 @@ import {
   LogOut, KeyRound, Printer, Wallet, ListOrdered
 } from "lucide-react";
 import { toast } from "sonner";
-import { consumeCajeroHandoff, securePost } from "@/lib/secureFetch";
+import { consumeCajeroHandoff } from "@/lib/secureFetch";
+import { formatCOP } from "@/lib/formatters";
+import { authService } from "@/services/authService";
+import { cajeroService } from "@/services/cajeroService";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const fmt = (n: number) =>
-  new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n);
+const fmt = formatCOP;
 
 export function CajeroAtmView() {
   const [autenticado, setAutenticado] = useState(false);
@@ -41,14 +43,11 @@ export function CajeroAtmView() {
 
   const checkSesion = async () => {
     try {
-      const res = await fetch("/api/cajero/saldo", { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
-        setCuentaInfo(data.cuenta || data);
-        setAutenticado(true);
-      }
-    } catch (err) {
-      // Sin sesión
+      const data = await cajeroService.getSaldo();
+      setCuentaInfo(data.cuenta || data);
+      setAutenticado(true);
+    } catch {
+      // Sin sesión activa
     }
   };
 
@@ -61,15 +60,7 @@ export function CajeroAtmView() {
 
     try {
       setLoading(true);
-      const res = await securePost("/api/auth/login-cajero", {
-        numero_cuenta: cuentaNumero.trim(),
-        pin: pin.trim(),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Credenciales inválidas en cajero.");
-        return;
-      }
+      const data = await authService.loginCajero(cuentaNumero.trim(), pin.trim());
       toast.success("Acceso ATM autorizado con éxito", {
         description: "Bienvenido al Dispensador de Banco de Corazones.",
       });
@@ -77,7 +68,7 @@ export function CajeroAtmView() {
       setAutenticado(true);
       setPantalla("menu");
     } catch (err: any) {
-      toast.error(err?.message || "Error de comunicación segura con el dispensador.");
+      toast.error(err?.message || "Credenciales inválidas en cajero.");
     } finally {
       setLoading(false);
     }
@@ -95,15 +86,7 @@ export function CajeroAtmView() {
     }
     try {
       setLoading(true);
-      const res = await securePost("/api/cajero/retirar", {
-        valor,
-        codigoOtp: codigoTrim,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "No se pudo realizar el retiro.");
-        return;
-      }
+      const data = await cajeroService.retirar(valor, codigoTrim);
       toast.success("Retiro exitoso", {
         description: data.mensaje || `Efectivo dispensado por ${fmt(valor)}.`,
       });
@@ -111,7 +94,7 @@ export function CajeroAtmView() {
       setCuentaInfo((prev: any) => ({ ...prev, saldo: data.recibo.nuevo_saldo }));
       setPantalla("recibo");
     } catch (err: any) {
-      toast.error(err?.message || "Error de comunicación segura al dispensar dinero.");
+      toast.error(err?.message || "No se pudo realizar el retiro.");
     } finally {
       setLoading(false);
     }
@@ -120,22 +103,19 @@ export function CajeroAtmView() {
   const cargarMovimientos = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/cajero/movimientos", { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
-        setMovimientos(data.movimientos || []);
-        setPantalla("movimientos");
-        toast.success("Movimientos consultados con éxito.");
-      }
-    } catch (err) {
-      toast.error("Error al consultar movimientos.");
+      const data = await cajeroService.getMovimientos();
+      setMovimientos(data.movimientos || []);
+      setPantalla("movimientos");
+      toast.success("Movimientos consultados con éxito.");
+    } catch (err: any) {
+      toast.error(err?.message || "Error al consultar movimientos.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    await authService.logout();
     setAutenticado(false);
     setCuentaInfo(null);
     setPin("");

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { securePost } from "@/lib/secureFetch";
+import { authService } from "@/services/authService";
 
 interface AdminLoginProps {
   onLoginSuccess?: () => void;
@@ -27,23 +27,14 @@ export function AdminLogin({ onLoginSuccess }: AdminLoginProps) {
 
     try {
       setLoading(true);
-      const res = await securePost("/api/auth/login-admin", {
-        correo: adminCorreo.trim(),
-        password: adminPassword,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "Credenciales inválidas.");
-        return;
-      }
+      await authService.loginAdmin(adminCorreo.trim(), adminPassword);
 
       toast.success("Acceso administrativo concedido", {
         description: "Bienvenido al Panel Administrativo — Banco de Corazones.",
       });
       if (onLoginSuccess) onLoginSuccess();
     } catch (err: any) {
-      toast.error(err?.message || "Error de conexión segura.");
+      toast.error(err?.message || "Credenciales inválidas.");
     } finally {
       setLoading(false);
     }
