@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { isStrongPassword } from "@/lib/secureFetch";
+import { isStrongPassword, validateAdultBirthDate } from "@/lib/secureFetch";
 import { formatCOP } from "@/lib/formatters";
 import { authService } from "@/services/authService";
 import { adminService } from "@/services/adminService";
@@ -43,6 +43,7 @@ export function AdminPanelView() {
     apellidos: "",
     correo: "",
     telefono: "",
+    fecha_nacimiento: "",
     saldo_inicial: "",
     password: "",
     pin_cajero: "",
@@ -129,6 +130,11 @@ export function AdminPanelView() {
 
   const handleCrearSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const dobError = validateAdultBirthDate(nuevo.fecha_nacimiento, 18);
+    if (dobError) {
+      toast.error(dobError);
+      return;
+    }
     if (!isStrongPassword(nuevo.password)) {
       toast.error("La clave web debe tener mínimo 8 caracteres, mayúscula, minúscula y número.");
       return;
@@ -156,6 +162,7 @@ export function AdminPanelView() {
         apellidos: "",
         correo: "",
         telefono: "",
+        fecha_nacimiento: "",
         saldo_inicial: "",
         password: "",
         pin_cajero: "",
@@ -468,6 +475,28 @@ export function AdminPanelView() {
                     onChange={(e) => setNuevo({ ...nuevo, correo: e.target.value })}
                     required
                     className="mt-1 bg-slate-50 border-slate-300 text-slate-900"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700">Teléfono</Label>
+                  <Input
+                    value={nuevo.telefono}
+                    onChange={(e) => setNuevo({ ...nuevo, telefono: e.target.value })}
+                    placeholder="3101234567"
+                    className="mt-1 bg-slate-50 border-slate-300 font-mono text-slate-900"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-slate-700">Fecha de Nacimiento * (18+)</Label>
+                  <Input
+                    type="date"
+                    max={new Date().toISOString().slice(0, 10)}
+                    value={nuevo.fecha_nacimiento}
+                    onChange={(e) => setNuevo({ ...nuevo, fecha_nacimiento: e.target.value })}
+                    required
+                    className="mt-1 bg-slate-50 border-slate-300 font-mono text-slate-900"
                   />
                 </div>
               </div>

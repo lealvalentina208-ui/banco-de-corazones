@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { isStrongPassword } from "@/lib/secureFetch";
+import { isStrongPassword, validateAdultBirthDate } from "@/lib/secureFetch";
 import { authService } from "@/services/authService";
 
 interface BancaLoginProps {
@@ -29,6 +29,7 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
     apellidos: "",
     correo: "",
     telefono: "",
+    fecha_nacimiento: "",
     tipo_cuenta_id: 1,
     password: "",
     password_confirm: "",
@@ -50,6 +51,11 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
     e.preventDefault();
     if (!regData.numero_documento.trim() || !regData.nombres.trim() || !regData.apellidos.trim() || !regData.correo.trim()) {
       toast.error("Complete todos los campos obligatorios.");
+      return;
+    }
+    const dobError = validateAdultBirthDate(regData.fecha_nacimiento, 18);
+    if (dobError) {
+      toast.error(dobError);
       return;
     }
     if (!isStrongPassword(regData.password)) {
@@ -75,6 +81,7 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
         apellidos: regData.apellidos.trim(),
         correo: regData.correo.trim(),
         telefono: regData.telefono.trim(),
+        fecha_nacimiento: regData.fecha_nacimiento,
         tipo_cuenta_id: regData.tipo_cuenta_id,
         password: regData.password,
         pin_cajero: pin,
@@ -319,6 +326,21 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
                         className="mt-1 h-9 bg-slate-50 border-slate-300 text-slate-900 text-xs font-mono"
                       />
                     </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px] font-semibold text-slate-700">Fecha de Nacimiento *</Label>
+                      <span className="text-[10px] font-medium text-rose-600">Solo mayores de 18 años</span>
+                    </div>
+                    <Input
+                      type="date"
+                      max={new Date().toISOString().slice(0, 10)}
+                      value={regData.fecha_nacimiento}
+                      onChange={(e) => setRegData({ ...regData, fecha_nacimiento: e.target.value })}
+                      required
+                      className="mt-1 h-9 bg-slate-50 border-slate-300 text-slate-900 text-xs font-mono"
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">

@@ -73,6 +73,7 @@ CREATE TABLE usuarios (
     apellidos VARCHAR(80) NOT NULL,
     correo VARCHAR(120) NOT NULL UNIQUE,
     telefono VARCHAR(25) NULL,
+    fecha_nacimiento DATE NULL,
     ciudad VARCHAR(50) NOT NULL DEFAULT 'Manizales',
     nivel_asociado VARCHAR(30) NOT NULL DEFAULT 'Asociado Corazón',
     password_hash VARCHAR(255) NOT NULL,
