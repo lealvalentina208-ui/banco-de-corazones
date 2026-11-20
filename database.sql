@@ -7,6 +7,7 @@ USE banco_corazones;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
+DROP TABLE IF EXISTS notificaciones;
 DROP TABLE IF EXISTS metas_corazon;
 DROP TABLE IF EXISTS transferencias;
 DROP TABLE IF EXISTS movimientos;
@@ -146,6 +147,18 @@ CREATE TABLE transferencias (
     CONSTRAINT fk_cor_tr_op FOREIGN KEY (operacion_id) REFERENCES operaciones (id) ON DELETE CASCADE,
     CONSTRAINT fk_cor_tr_orig FOREIGN KEY (cuenta_origen_id) REFERENCES cuentas (id),
     CONSTRAINT fk_cor_tr_dest FOREIGN KEY (cuenta_destino_id) REFERENCES cuentas (id)
+) ENGINE=InnoDB;
+
+CREATE TABLE notificaciones (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    usuario_id BIGINT UNSIGNED NOT NULL,
+    tipo VARCHAR(40) NOT NULL DEFAULT 'TRANSACCION',
+    titulo VARCHAR(120) NOT NULL,
+    detalle VARCHAR(280) NOT NULL,
+    leida TINYINT(1) NOT NULL DEFAULT 0,
+    creada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_cor_notif_user_leida (usuario_id, leida, id),
+    CONSTRAINT fk_cor_notif_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Catálogos iniciales

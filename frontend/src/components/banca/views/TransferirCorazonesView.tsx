@@ -1,12 +1,32 @@
 import { useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, RefreshCw } from "lucide-react";
+import { CheckCircle2, RefreshCw, AlertCircle, X, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatCOP } from "@/lib/formatters";
 import { bancaService } from "@/services/bancaService";
 import type { Cuenta } from "../types";
+
+interface PendingTransferConfirm {
+  cuenta_origen_id: number;
+  cuenta_origen_numero: string;
+  numero_cuenta_destino: string;
+  titular_destino: string;
+  tipo_cuenta_destino: string;
+  valor: number;
+  impuesto: number;
+  total_debitar: number;
+  concepto: string;
+}
 
 interface TransferirCorazonesViewProps {
   cuentaActiva: Cuenta | null;
@@ -25,6 +45,8 @@ export function TransferirCorazonesView({
   const [montoTransferir, setMontoTransferir] = useState("");
   const [conceptoTransferir, setConceptoTransferir] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [verificandoDestino, setVerificandoDestino] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<PendingTransferConfirm | null>(null);
   const [reciboTransferencia, setReciboTransferencia] = useState<any>(null);
 
   const valorNum = parseFloat(montoTransferir) || 0;
@@ -32,32 +54,68 @@ export function TransferirCorazonesView({
 
   const handleTransferir = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!cuentaDestino.trim() || isNaN(valorNum) || valorNum <= 0) {
+    if (!cuentaActiva) {
+      toast.error("No hay una cuenta de origen activa.");
+      return;
+    }
+    const destinoLimpio = cuentaDestino.trim().replace(/\D/g, "");
+    if (!destinoLimpio || isNaN(valorNum) || valorNum <= 0) {
       toast.error("Verifica la cuenta destino y el monto a enviar.");
+      return;
+    }
+    if (destinoLimpio === cuentaActiva.numero_cuenta) {
+      toast.error("No puedes realizar una transferencia a tu misma cuenta de origen.");
+      return;
+    }
+    if (valorNum > saldoActual) {
+      toast.error(`Saldo insuficiente. Disponible en tu cuenta: ${formatCOP(saldoActual)}`);
       return;
     }
 
     try {
-      setEnviando(true);
-      const data = await bancaService.transferir({
-        cuenta_origen_id: cuentaActiva?.id,
-        numero_cuenta_destino: cuentaDestino.trim(),
+      setVerificandoDestino(true);
+      const destinatario = await bancaService.consultarDestinatario(destinoLimpio, cuentaActiva.id);
+      setPendingConfirm({
+        cuenta_origen_id: cuentaActiva.id,
+        cuenta_origen_numero: cuentaActiva.numero_cuenta,
+        numero_cuenta_destino: destinatario.numero_cuenta,
+        titular_destino: destinatario.titular,
+        tipo_cuenta_destino: destinatario.tipo_cuenta,
         valor: valorNum,
+        impuesto: gmf4x1000,
+        total_debitar: valorNum + gmf4x1000,
         concepto: conceptoTransferir.trim() || "Envío Banco de Corazones",
       });
-      const detalle = `Enviaste ${formatCOP(valorNum)} a la cuenta ${cuentaDestino.trim()}${
-        data.comprobante?.titular_destino ? ` (${data.comprobante.titular_destino})` : ""
-      }.`;
+    } catch (err: any) {
+      toast.error(err?.message || "No se pudo verificar la cuenta destino.");
+    } finally {
+      setVerificandoDestino(false);
+    }
+  };
+
+  const handleConfirmarTransferencia = async () => {
+    if (!pendingConfirm) return;
+    try {
+      setEnviando(true);
+      const data = await bancaService.transferir({
+        cuenta_origen_id: pendingConfirm.cuenta_origen_id,
+        numero_cuenta_destino: pendingConfirm.numero_cuenta_destino,
+        valor: pendingConfirm.valor,
+        concepto: pendingConfirm.concepto,
+      });
+      const detalle = `Enviaste ${formatCOP(pendingConfirm.valor)} a ${pendingConfirm.titular_destino} (${pendingConfirm.numero_cuenta_destino}).`;
       toast.success("Transferencia exitosa", { description: detalle });
-      onNotify("Transferencia exitosa", detalle);
       setReciboTransferencia(
         data.comprobante || {
-          cuenta_destino: cuentaDestino.trim(),
-          valor: valorNum,
-          impuesto: gmf4x1000,
+          cuenta_destino: pendingConfirm.numero_cuenta_destino,
+          titular_destino: pendingConfirm.titular_destino,
+          valor: pendingConfirm.valor,
+          impuesto: pendingConfirm.impuesto,
           fecha: new Date().toLocaleString("es-CO"),
         }
       );
+      setPendingConfirm(null);
+      setCuentaDestino("");
       setMontoTransferir("");
       setConceptoTransferir("");
       onTransferSuccess();
@@ -145,13 +203,91 @@ export function TransferirCorazonesView({
 
         <Button
           type="submit"
-          disabled={enviando}
+          disabled={enviando || verificandoDestino}
           className="w-full h-11 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm"
         >
-          {enviando ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : null}
-          Confirmar Envío de Dinero
+          {enviando || verificandoDestino ? <RefreshCw className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+          {verificandoDestino ? "Verificando cuenta destino..." : "Continuar y Confirmar Envío"}
         </Button>
       </form>
+
+      {/* DIÁLOGO DE CONFIRMACIÓN DE TRANSFERENCIA */}
+      <Dialog
+        open={Boolean(pendingConfirm)}
+        onOpenChange={(open) => {
+          if (!open && !enviando) setPendingConfirm(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md bg-white border-slate-200 text-slate-900">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-rose-100 text-rose-600">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-bold text-slate-900">
+                  Confirmar Transferencia
+                </DialogTitle>
+                <DialogDescription className="text-xs text-slate-500">
+                  Revisa los datos antes de autorizar el envío de dinero.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {pendingConfirm && (
+            <div className="rounded-xl border border-rose-100 bg-rose-50/50 p-4 space-y-2 text-xs">
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Destinatario:</span>
+                <span className="font-bold text-slate-900 text-right">{pendingConfirm.titular_destino}</span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Cuenta destino:</span>
+                <span className="font-mono font-semibold text-rose-700">
+                  {pendingConfirm.numero_cuenta_destino} ({pendingConfirm.tipo_cuenta_destino})
+                </span>
+              </div>
+              <div className="flex justify-between gap-2">
+                <span className="text-slate-500">Cuenta origen:</span>
+                <span className="font-mono text-slate-700">{pendingConfirm.cuenta_origen_numero}</span>
+              </div>
+              <div className="border-t border-rose-200/70 pt-2 flex justify-between gap-2 text-sm font-bold">
+                <span className="text-slate-700">Monto a enviar:</span>
+                <span className="font-mono text-emerald-700">{formatCOP(pendingConfirm.valor)}</span>
+              </div>
+              <div className="flex justify-between gap-2 text-[11px] text-slate-500">
+                <span>Concepto:</span>
+                <span className="text-slate-700">{pendingConfirm.concepto}</span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={enviando}
+              onClick={() => {
+                setPendingConfirm(null);
+                toast.info("Transferencia cancelada.");
+              }}
+              className="flex-1 border-slate-300 text-slate-700 hover:bg-slate-100"
+            >
+              <X className="h-4 w-4 mr-1.5" />
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={enviando}
+              onClick={handleConfirmarTransferencia}
+              className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold"
+            >
+              {enviando ? <RefreshCw className="h-4 w-4 animate-spin mr-1.5" /> : <CheckCircle2 className="h-4 w-4 mr-1.5" />}
+              Sí, Confirmar Envío
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

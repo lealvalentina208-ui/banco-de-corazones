@@ -310,6 +310,8 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
                       <Label className="text-[11px] font-semibold text-slate-700">Correo</Label>
                       <Input
                         type="email"
+                        name="reg_email"
+                        autoComplete="email"
                         value={regData.correo}
                         onChange={(e) => setRegData({ ...regData, correo: e.target.value })}
                         placeholder="cliente@corazones.com"
@@ -320,8 +322,12 @@ export function BancaLogin({ onLogin, loading }: BancaLoginProps) {
                     <div>
                       <Label className="text-[11px] font-semibold text-slate-700">Teléfono</Label>
                       <Input
+                        type="tel"
+                        name="reg_telefono"
+                        autoComplete="tel"
+                        inputMode="numeric"
                         value={regData.telefono}
-                        onChange={(e) => setRegData({ ...regData, telefono: e.target.value })}
+                        onChange={(e) => setRegData({ ...regData, telefono: e.target.value.replace(/\D/g, "") })}
                         placeholder="3101234567"
                         className="mt-1 h-9 bg-slate-50 border-slate-300 text-slate-900 text-xs font-mono"
                       />

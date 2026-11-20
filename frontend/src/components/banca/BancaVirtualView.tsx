@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { toast } from "sonner";
 import { authService } from "@/services/authService";
 import { bancaService } from "@/services/bancaService";
@@ -21,8 +21,18 @@ export function BancaVirtualView() {
   const [activeTab, setActiveTab] = useState<CorazonesTab>("resumen");
   const [loginLoading, setLoginLoading] = useState(false);
 
-  const [notificaciones, setNotificaciones] = useState<NotificacionBanco[]>([]);
-  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [notificacionesLocales, setNotificacionesLocales] = useState<NotificacionBanco[]>([]);
+  const [notificacionesServidor, setNotificacionesServidor] = useState<NotificacionBanco[]>([]);
+  const [unreadLocal, setUnreadLocal] = useState(0);
+  const [unreadServidor, setUnreadServidor] = useState(0);
+  const seenServerNotifIdsRef = useRef<Set<number>>(new Set());
+  const initialNotifSyncRef = useRef(false);
+
+  const notificaciones = useMemo(
+    () => [...notificacionesLocales, ...notificacionesServidor].slice(0, 25),
+    [notificacionesLocales, notificacionesServidor]
+  );
+  const unreadNotifs = unreadLocal + unreadServidor;
 
   const [codigoRetiro, setCodigoRetiro] = useState<string | null>(null);
   const [loadingCodigo, setLoadingCodigo] = useState(false);
@@ -34,8 +44,45 @@ export function BancaVirtualView() {
       detail,
       time: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
     };
-    setNotificaciones((prev) => [item, ...prev].slice(0, 20));
-    setUnreadNotifs((prev) => prev + 1);
+    setNotificacionesLocales((prev) => [item, ...prev].slice(0, 20));
+    setUnreadLocal((prev) => prev + 1);
+  };
+
+  const syncNotificaciones = async (refreshOnIncoming = false) => {
+    try {
+      const data = await bancaService.getNotificaciones();
+      const rows = data.notificaciones || [];
+      let hayTransferenciaNueva = false;
+
+      for (const n of rows) {
+        const yaVista = seenServerNotifIdsRef.current.has(n.id);
+        seenServerNotifIdsRef.current.add(n.id);
+
+        if (!yaVista && n.leida === 0 && n.tipo === "TRANSFERENCIA_RECIBIDA") {
+          if (!initialNotifSyncRef.current || refreshOnIncoming) {
+            hayTransferenciaNueva = true;
+            toast.success(n.titulo, { description: n.detalle });
+          }
+        }
+      }
+      initialNotifSyncRef.current = true;
+
+      setNotificacionesServidor(
+        rows.map((n) => ({
+          id: `srv-${n.id}`,
+          title: n.titulo,
+          detail: n.detalle,
+          time: new Date(n.creada_en).toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+        }))
+      );
+      setUnreadServidor(data.unread_count || 0);
+
+      if (hayTransferenciaNueva && refreshOnIncoming) {
+        cargarResumen(true);
+      }
+    } catch {
+      // Silencioso en polling de notificaciones
+    }
   };
 
   const cargarMovimientos = async (cuentaId: number) => {
@@ -47,9 +94,10 @@ export function BancaVirtualView() {
     }
   };
 
-  const cargarResumen = async () => {
+  const cargarResumen = async (silent = false) => {
+    const isSilent = silent === true;
     try {
-      setLoading(true);
+      if (!isSilent) setLoading(true);
       const data = await bancaService.getResumen();
       if (data.usuario) {
         setUsuario(data.usuario);
@@ -63,21 +111,30 @@ export function BancaVirtualView() {
             cargarMovimientos(cuentaActual.id);
           }
         }
+        syncNotificaciones(false);
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
         setUsuario(null);
-      } else {
+      } else if (!isSilent) {
         toast.error("Error de conexión con el servidor.");
       }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
     cargarResumen();
   }, []);
+
+  useEffect(() => {
+    if (!usuario) return;
+    const intervalId = setInterval(() => {
+      syncNotificaciones(true);
+    }, 5000);
+    return () => clearInterval(intervalId);
+  }, [usuario?.id]);
 
   const handleLogin = async (identificador: string, pass: string) => {
     try {
@@ -105,8 +162,12 @@ export function BancaVirtualView() {
       setCuentas([]);
       setCuentaActiva(null);
       setMovimientos([]);
-      setNotificaciones([]);
-      setUnreadNotifs(0);
+      setNotificacionesLocales([]);
+      setNotificacionesServidor([]);
+      setUnreadLocal(0);
+      setUnreadServidor(0);
+      seenServerNotifIdsRef.current.clear();
+      initialNotifSyncRef.current = false;
       setActiveTab("resumen");
       toast.success("Sesión cerrada con éxito", {
         description: "Has salido de tu sucursal virtual.",
@@ -166,7 +227,11 @@ export function BancaVirtualView() {
         onLogout={handleLogout}
         notificaciones={notificaciones}
         unreadNotifs={unreadNotifs}
-        onMarkNotificationsRead={() => setUnreadNotifs(0)}
+        onMarkNotificationsRead={() => {
+          setUnreadLocal(0);
+          setUnreadServidor(0);
+          bancaService.marcarNotificacionesLeidas().catch(() => {});
+        }}
       />
 
       <main className="max-w-6xl mx-auto px-4 py-6 space-y-6">
